@@ -56,7 +56,7 @@ const DATA_V = 5; // 详情 JSON 缓存版本：数据更新时 +1（绕过浏�
 const state = {
   meta: null, topics: [], topicByslug: new Map(),
   books: [], byId: new Map(), full: false,
-  searchIdx: null, trends: null, buy: null,
+  searchIdx: null, trends: null, buy: null, pyIndex: null, coIndex: null,
   cache: {},
 };
 
@@ -219,20 +219,25 @@ function search(query) {
     a: norm((b.a || []).join(' ')),
     k: (b.k || []).map((x) => norm(String(x).replace(/&/g, ' and '))), // HN 缩写：sicp、taocp、k&r…
   }));
+  const py = state.pyIndex;                  // 拼音索引（ASCII 查询时懒加载）
   const hits = [];
   state.books.forEach((b, i) => {
     const { t, z, a, k } = state.searchIdx[i];
+    const p = py && py[b.id], p0 = p && p[0], p1 = p && p[1];
     let rank = -1;
     if (k.includes(q)) rank = -0.5;           // 精确缩写优先于一切
     else if (t === q || (z && z === q)) rank = 0;
     else if (t.startsWith(q) || (z && z.startsWith(q))) rank = 1;
+    else if (p0 && p0 === q) rank = 1.05;     // 全拼精确
+    else if (p0 && p0.startsWith(q)) rank = 1.2;
     else if (q.length >= 3 && k.some((x) => x.startsWith(q))) rank = 1.5;
     else if (t.includes(' ' + q)) rank = 2;
-    else if (t.includes(q) || (z && z.includes(q))) rank = 3;
+    else if (q.length >= 2 && p1 && p1.startsWith(q)) rank = 2.2;  // 拼音首字母
+    else if (t.includes(q) || (z && z.includes(q)) || (p0 && p0.includes(q))) rank = 3;
     else if (q.length >= 3 && k.some((x) => x.includes(q))) rank = 3.5;
     else {
-      const all = t + ' ' + z + ' ' + a;
-      if (tokens.every((w) => all.includes(w))) rank = tokens.every((w) => t.includes(w) || (z && z.includes(w))) ? 4 : tokens.every((w) => a.includes(w)) ? 5 : 6;
+      const all = t + ' ' + z + ' ' + (p0 || '') + ' ' + a;
+      if (tokens.every((w) => all.includes(w))) rank = tokens.every((w) => t.includes(w) || (z && z.includes(w)) || (p0 && p0.includes(w))) ? 4 : tokens.every((w) => a.includes(w)) ? 5 : 6;
     }
     if (rank > -1) hits.push({ b, rank, i });
   });
@@ -488,6 +493,8 @@ function renderTopic(slug, q, restore) {
 }
 
 const ensureCoIndex = () => (state.coIndexP ??= getJSON('/data/co-index.json').then((m) => { state.coIndex = m; }).catch(() => { state.coIndex = {}; }));
+const ensurePyIndex = () => (state.pyIndexP ??= getJSON('/data/py-index.json').then((m) => { state.pyIndex = m; }).catch(() => { state.pyIndex = {}; }));
+const looksPinyin = (q) => /^[a-z]{2,}$/.test(q);
 function renderForYou(q, restore) {
   setPage('为你推荐', '根据你的书架标记与浏览记录在本地计算的个性化推荐。');
   const views = profile.views();
@@ -522,8 +529,30 @@ function renderSearch(q) {
     main.innerHTML = '<p class="empty">在上方搜索框输入书名或作者。</p>';
     return;
   }
-  const results = search(text);
-  main.innerHTML = `<div class="page-h"><h1>“${esc(text)}” 的搜索结果</h1></div><p class="sub">找到 ${fmt(results.length)} 本。</p><div class="grid" id="grid"></div>`;
+  if (!state.pyIndex && looksPinyin(norm(text))) {
+    ensurePyIndex().then(() => { if (parseHash().path === '/search') route(); });
+  }
+  const dec = q.get('dec') || '', tp = q.get('t') || '';
+  const all = search(text);
+  let results = all;
+  if (dec) results = results.filter((b) => inDecade(b, dec));
+  if (tp) results = results.filter((b) => (b.tp || []).includes(tp));
+  const url = (p) => hashFor('/search', { q: text, ...(dec ? { dec } : {}), ...(tp ? { t: tp } : {}), ...p });
+  let chips = '';
+  if (all.length > 20) {
+    const ly = state.meta.last_year;
+    const sinceOpts = [2015, 2020, ly - 1].filter((y, i, a2) => a2.indexOf(y) === i && y > state.meta.first_year);
+    const decades = DECADES.filter(([dv]) => all.some((b) => inDecade(b, dv)));
+    const tCount = {};
+    for (const b of all) for (const t2 of b.tp || []) tCount[t2] = (tCount[t2] || 0) + 1;
+    const tops = state.topics.filter((t2) => tCount[t2.slug]).sort((x, y) => tCount[y.slug] - tCount[x.slug]).slice(0, 8);
+    const chip = (label, params, on) => `<a class="chip${on ? ' on' : ''}" href="${hashFor('/search', { q: text, ...(tp ? { t: tp } : {}), ...params })}">${esc(label)}</a>`;
+    const tchip = (label, slug) => `<a class="chip${tp === slug ? ' on' : ''}" href="${hashFor('/search', { q: text, ...(dec ? { dec } : {}), ...(slug ? { t: slug } : {}) })}">${esc(label)}</a>`;
+    chips = `<div id="chips"><div class="chips"><span class="lbl">出版年代</span>${chip('全部', { dec: '' }, !dec)}${decades.map(([dv, l]) => chip(l, { dec: dv }, dec === dv)).join('')}</div>
+    <div class="chips"><span class="lbl">话题</span>${tchip('全部', '')}${tops.map((t2) => tchip(t2.name, t2.slug)).join('')}</div></div>`;
+    void sinceOpts;
+  }
+  main.innerHTML = `<div class="page-h"><h1>“${esc(text)}” 的搜索结果</h1></div><p class="sub">找到 ${fmt(all.length)} 本${(dec || tp) ? `，筛出 ${fmt(results.length)} 本。<a href="${hashFor('/search', { q: text })}">清除筛选</a>` : ''}。</p>${chips}<div class="grid" id="grid"></div>`;
   if (!results.length) {
     $('#grid').outerHTML = '<p class="empty">没有匹配的书。试试更少的字或别的拼写。</p>';
     return;
@@ -741,12 +770,21 @@ async function showShareImage() {
   }, 'image/png');
 }
 function renderShelf(restore, query) {
+  const sharedIds = (query.get('ids') || '').split(',').filter((x) => x && byId01(x));
+  function byId01(x) { return state.byId.get(x) ? x : null; }
+  if (sharedIds.length) {
+    const books = sharedIds.map((id) => state.byId.get(id)).filter(Boolean);
+    setPage('分享的书架', '来自黑客书架用户分享的书单。');
+    main.innerHTML = `<div class="page-h"><h1>分享的书架</h1></div><p class="sub">共 ${fmt(books.length)} 本 · <a href="/list">查看我的书架</a></p><div class="grid" id="grid"></div>`;
+    current = mountInfinite($('#grid'), books, restore?.shown || 0);
+    return;
+  }
   const f = query.get('f') === 'wish' || query.get('f') === 'read' ? query.get('f') : 'all';
   const all = Object.entries(shelfGet());
   const rows = all.filter(([, v]) => f === 'all' || v.s === f);
   setPage('我的书架', '想读、读过和评分，只存在本机浏览器里。');
   const tab = (label, key, n) => `<a class="chip${f === key ? ' on' : ''}" href="/list${key === 'all' ? '' : '?f=' + key}">${label} ${fmt(n)}</a>`;
-  const sub = `<div class="chips shelf-tabs">${tab('全部', 'all', all.length)}${tab('想读', 'wish', shelfIds('wish').length)}${tab('读过', 'read', shelfIds('read').length)}</div><p class="sub"><button class="btn" id="shelf-copy" type="button">复制书单</button></p>`;
+  const sub = `<div class="chips shelf-tabs">${tab('全部', 'all', all.length)}${tab('想读', 'wish', shelfIds('wish').length)}${tab('读过', 'read', shelfIds('read').length)}</div><p class="sub"><button class="btn" id="shelf-copy" type="button">复制书单</button> <button class="btn" id="shelf-share" type="button">复制分享链接</button></p>`;
   if (!rows.length) {
     main.innerHTML = `<div class="page-h"><h1>我的书架</h1></div>${sub}<p class="empty">${f === 'all' ? '书架还是空的：在书卡右上角或详情页标记「想读 / 读过」。' : '这个分类下还没有书。'}</p>`;
     wireShelfCopy(rows);
@@ -767,6 +805,11 @@ function wireShelfCopy(books) {
       return `${i + 1}. ${T(b)}（${enName(b) || b.t}）[${tag}]`;
     }).join('\n') + '\n' + location.origin;
     try { await navigator.clipboard.writeText(text); btn.textContent = '已复制 ✓'; } catch { btn.textContent = '复制失败'; }
+  };
+  const share = $('#shelf-share');
+  if (share) share.onclick = async () => {
+    const link = location.origin + '/list?ids=' + Object.keys(shelfGet()).join(',');
+    try { await navigator.clipboard.writeText(link); share.textContent = '链接已复制 ✓'; } catch { share.textContent = '复制失败'; }
   };
 }
 const BOOK_REDIRECTS = { OL999456W: 'OL1975712W', OL28649132W: 'OL82563W', OL27739326W: 'OL21385222W' };
