@@ -47,7 +47,7 @@ const URLS = {
 const TOP_N = 600;
 const HOME_CAP = 120; // 今日书架每日限量：每天换一批，看全部去历史总榜
 const EAGER = 12; // 首屏卡片用 eager 高优先级加载封面
-const DATA_V = 5; // 详情 JSON 缓存版本：数据更新时 +1（绕过浏览器里的旧强缓存）
+const DATA_V = 6; // 详情 JSON 缓存版本：数据更新时 +1（绕过浏览器里的旧强缓存）
 
 /*
  * state.books 是当前最优索引：全量索引到达前用 top-TOP_N 切片（state.full），之后是全部。
@@ -378,7 +378,7 @@ const DECADES = [
 const inDecade = (b, d) => b.y != null && (d === 'pre' ? b.y < 1950 : b.y >= +d && b.y < +d + 10);
 
 /** 渲染一个带筛选 chips（出版年代、首次提及年份）的书籍列表页。 */
-function renderFeed({ title, sub = '', path, query, items, pre = '', restore, full = true, sortable = false, card }) {
+function renderFeed({ title, sub = '', path, query, items, pre = '', restore, full = true, sortable = false, card, keep = {} }) {
   const dec = query.get('dec') || '';
   const since = +query.get('since') || 0;
   const sort = sortable && query.get('sort') === 'q' ? 'q' : '';
@@ -388,7 +388,7 @@ function renderFeed({ title, sub = '', path, query, items, pre = '', restore, fu
     return sort ? byQ(l) : l;
   };
   const ly = state.meta.last_year;
-  const chip = (label, params, on) => `<a class="chip${on ? ' on' : ''}" href="${hashFor(path, { sort, dec, since, ...params })}"${on ? ' aria-current="true"' : ''}>${esc(label)}</a>`;
+  const chip = (label, params, on) => `<a class="chip${on ? ' on' : ''}" href="${hashFor(path, { ...keep, sort, dec, since, ...params })}"${on ? ' aria-current="true"' : ''}>${esc(label)}</a>`;
   const sinceOpts = [2015, 2020, ly - 1].filter((y, i, a) => a.indexOf(y) === i && y > state.meta.first_year);
   const chipsHTML = (all) => {
     const present = DECADES.filter(([d]) => all.some((b) => inDecade(b, d)));
@@ -503,6 +503,239 @@ function renderTopic(slug, q, restore) {
     pre: '<div id="paths"></div>',
   });
   mountPaths(slug);
+}
+
+/* ============================== 值得读：精选 / 林迪 / 争议 / 筛选 / 星图 ============================== */
+// 指数 q、一句话 w、近三年推荐人数 lr、口碑漂移 dr 由 translate/quality/ 的离线脚本注入 books.json。
+const bestOrder = () => cached('best', () => state.books.filter((b) => b.q != null).sort((x, y) => y.q - x.q || (y.ru || 0) - (x.ru || 0)));
+const LINDY_AGE = 30;
+/** 林迪榜：初版超过 LINDY_AGE 年、近三年仍有人推荐、推荐人数 ≥ 8。 */
+const lindyOrder = () => cached('lindy', () => {
+  const cut = state.meta.last_year - LINDY_AGE;
+  return state.books.filter((b) => b.y != null && b.y <= cut && (b.lr || 0) >= 1 && (b.ru || 0) >= 8 && b.q != null).sort((x, y) => y.q - x.q);
+});
+// 仇恨/极端主义文本与文化战争类书籍不进争议榜：它们的「批评」是立场之争，不是对阅读价值的判断。
+const CRIT_BLOCK = new Set(['OL1067314W', 'OL2983476W', 'OL9003436W', 'OL2968866W', 'OL19354079W', 'OL20086330W', 'OL21337755W', 'OL25100581W']);
+const CRIT_MIN_U = 30, CRIT_M = 20;
+/** 争议榜：批评者占比（向全站均值做平滑，权重 CRIT_M 人）降序。 */
+const overratedOrder = () => cached('overrated', () => {
+  const pool = state.books.filter((b) => b.u >= CRIT_MIN_U && !CRIT_BLOCK.has(b.id));
+  const c0 = pool.reduce((s2, b) => s2 + (b.cu || 0), 0) / pool.reduce((s2, b) => s2 + b.u, 0);
+  const v = (b) => ((b.cu || 0) + CRIT_M * c0) / (b.u + CRIT_M);
+  return pool.filter((b) => (b.cu || 0) >= 5).sort((x, y) => v(y) - v(x));
+});
+const driftDown = () => cached('drift', () => state.books.filter((b) => b.dr != null && b.dr <= -0.15 && !CRIT_BLOCK.has(b.id)).sort((x, y) => x.dr - y.dr));
+
+function renderBest(q, restore) {
+  setPage('值得读精选', '按值得读指数排序：综合 HN 读者的口碑、影响力、持久度和新鲜度。');
+  const g = ['gen', 'tech'].includes(q.get('g')) ? q.get('g') : '';
+  const isTech = (b) => (b.tp || []).length > 0 && (b.tp || []).every((t) => TECH_TOPICS.has(t));
+  const dec = q.get('dec') || '', since = +q.get('since') || 0;
+  const gchip = (label, v) => `<a class="chip${g === v ? ' on' : ''}" href="${hashFor('/best', { g: v, dec, since })}"${g === v ? ' aria-current="true"' : ''}>${label}</a>`;
+  renderFeed({
+    keep: { g },
+    pre: `<div class="chips" aria-label="读者类型"><span class="lbl">看哪类</span>${gchip('全部', '')}${gchip('大众阅读', 'gen')}${gchip('技术', 'tech')}</div>`,
+    title: '值得读精选',
+    sub: '按<a href="/about#q">值得读指数</a>排序。指数综合四项：口碑（推荐率，样本少的书会被拉回平均水平，批评会扣分）、影响力（推荐人数）、持久度（多少年里一直有人推荐）、新鲜度（近三年还有没有人推荐）。至少 5 位不同评论者提及才计分。想自己设条件，去<a href="/explore">高级筛选</a>。',
+    path: '/best',
+    query: q,
+    items: () => (g ? cached('best:' + g, () => bestOrder().filter((b) => (g === 'tech') === isTech(b))) : bestOrder()),
+    restore,
+  });
+}
+
+function renderLindy(q, restore) {
+  setPage('林迪榜', `初版超过 ${LINDY_AGE} 年、今天仍有 HN 读者推荐的书。`);
+  renderFeed({
+    title: '林迪榜',
+    sub: `林迪效应：一本书已经流传得越久，往往还会流传得越久。这里收录初版超过 ${LINDY_AGE} 年、${state.meta.last_year - 2}–${state.meta.last_year} 年仍有 HN 读者推荐、累计至少 8 人推荐的书，按值得读指数排序。初版年份已用 AI 对照修正过 Open Library 的再版年份，仍可能有个别误差。`,
+    path: '/lindy',
+    query: q,
+    items: lindyOrder,
+    restore,
+  });
+}
+
+function renderOverrated(q, restore) {
+  setPage('争议与劝退', 'HN 读者批评最多的书，以及口碑明显下滑的书。');
+  const drop = driftDown().slice(0, 12);
+  const dropHTML = drop.length ? `<section class="sec wide"><h2>口碑下滑</h2><p class="sub">推荐率在 2021 年后比 2016 年前明显下降的书（两段各至少 15 位评论者）。数字是推荐率变化的百分点。</p>
+    <div class="row">${drop.map((b) => cardHTML(b, false, `<p class="rec">推荐率 <b>${Math.round(b.dr * 100)}</b> 个百分点</p>`)).join('')}</div></section>
+    <section class="sec wide"><h2>批评最多</h2></section>` : '';
+  renderFeed({
+    title: '争议与劝退',
+    sub: `被提及不等于被推荐。这里按批评者占比排序（至少 ${CRIT_MIN_U} 位评论者、5 位批评者；样本少的书会被拉回全站平均水平）。批评常见的原因是过时、言过其实或翻车的观点，读之前先看看详情页里的原评论。立场之争类书籍（仇恨文本、文化战争话题）不列入。`,
+    path: '/overrated',
+    query: q,
+    items: overratedOrder,
+    restore,
+    pre: dropHTML,
+    card: (b, eager) => cardHTML(b, eager, critLine(b)),
+  });
+}
+
+/* ---- 话题页：从这里开始（入门 / 进阶 / 硬核经典） ---- */
+const ensurePaths = () => (state.pathsP ??= getJSON('/data/paths.json').catch(() => ({})));
+function mountPaths(slug) {
+  const token = routeToken;
+  ensurePaths().then((all) => {
+    const p = all[slug], host = $('#paths');
+    if (!p || !host || token !== routeToken) return;
+    const col = (label, items) => {
+      const rows = items.map((x) => ({ b: state.byId.get(x.id), r: x.r })).filter((x) => x.b);
+      return rows.length ? `<div class="path-col"><h3>${label}</h3><ol>${rows.map(({ b, r }) => `<li><a href="/book/${encodeURIComponent(b.id)}"><span class="path-c">${coverHTML(b)}</span><span class="path-t"><b>${esc(T(b))}</b><span>${esc(r)}</span></span></a></li>`).join('')}</ol></div>` : '';
+    };
+    host.innerHTML = `<section class="paths" aria-labelledby="paths-h"><h2 id="paths-h">从这里开始</h2>
+      <p class="sub">从这个话题里 HN 读者评价最高的书中挑出的一条阅读路径（AI 选书并写理由，仅供参考）。</p>
+      <div class="path-cols">${col('入门', p.start)}${col('进阶', p.next)}${col('硬核经典', p.deep)}</div></section>`;
+  });
+}
+
+/* ---- /explore：高级筛选 ---- */
+const EX_FIELDS = {
+  t: { label: '话题', def: '' },
+  y0: { label: '初版不早于', def: '' },
+  y1: { label: '初版不晚于', def: '' },
+  ru: { label: '推荐人数 ≥', def: '0', opts: [['0', '不限'], ['5', '5'], ['20', '20'], ['50', '50'], ['100', '100'], ['300', '300']] },
+  rr: { label: '推荐率 ≥', def: '0', opts: [['0', '不限'], ['50', '50%'], ['65', '65%'], ['80', '80%']] },
+  cr: { label: '批评率 ≤', def: '', opts: [['', '不限'], ['3', '3%'], ['8', '8%'], ['15', '15%']] },
+  q: { label: '值得读指数 ≥', def: '0', opts: [['0', '不限'], ['50', '50'], ['70', '70'], ['80', '80'], ['90', '90']] },
+  sort: { label: '排序', def: 'q', opts: [['q', '值得读指数'], ['ru', '推荐人数'], ['rr', '推荐率'], ['new', '初版从新到旧'], ['old', '初版从旧到新']] },
+};
+function renderExplore(query) {
+  setPage('高级筛选', '按话题、年代、推荐人数、推荐率、批评率和值得读指数组合筛书。');
+  const val = (k) => query.get(k) ?? EX_FIELDS[k].def;
+  const sel = (k) => `<label class="ex-f"><span>${EX_FIELDS[k].label}</span><select name="${k}">${EX_FIELDS[k].opts.map(([v, l]) => `<option value="${v}"${val(k) === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
+  const num = (k, ph) => `<label class="ex-f"><span>${EX_FIELDS[k].label}</span><input name="${k}" type="number" inputmode="numeric" placeholder="${ph}" value="${esc(val(k))}" min="-800" max="${state.meta.last_year}"></label>`;
+  const topicSel = `<label class="ex-f"><span>话题</span><select name="t"><option value="">全部话题</option>${topicGroups().map((g, gi) => `<optgroup label="${gi ? '技术' : '大众阅读'}">${g.map((t) => `<option value="${esc(t.slug)}"${val('t') === t.slug ? ' selected' : ''}>${esc(t.name)}</option>`).join('')}</optgroup>`).join('')}</select></label>`;
+  const chk = (k, label) => `<label class="ex-c"><input type="checkbox" name="${k}" value="1"${query.get(k) ? ' checked' : ''}> ${label}</label>`;
+  main.innerHTML = `<div class="page-h"><h1>高级筛选</h1></div>
+  <p class="sub">组合条件找书，条件会写进网址，可以直接分享。推荐率 = 推荐人数 ÷ 提及人数；批评率同理。</p>
+  <form class="ex-form" id="ex-form">${topicSel}${num('y0', '如 1900')}${num('y1', '如 2010')}${sel('ru')}${sel('rr')}${sel('cr')}${sel('q')}${sel('sort')}
+    <div class="ex-cs">${chk('fresh', '近三年仍有人推荐')}${chk('hide', '隐藏书架里已有的书')}<a href="/explore" class="chip">重置</a></div></form>
+  <p class="ex-n" id="ex-n" aria-live="polite"></p><div id="ex-res"></div>`;
+  const form = $('#ex-form');
+  const apply = () => {
+    const fd = new FormData(form);
+    const g = (k) => fd.get(k) || '';
+    const params = {};
+    for (const k of [...Object.keys(EX_FIELDS), 'fresh', 'hide']) { const v = g(k); if (v && v !== (EX_FIELDS[k]?.def ?? '')) params[k] = v; }
+    const url = hashFor('/explore', params);
+    history.replaceState(null, '', url);
+    const t = g('t'), y0 = +g('y0') || null, y1 = +g('y1') || null, ru = +g('ru') || 0, rr = (+g('rr') || 0) / 100,
+      cr = g('cr') === '' ? null : +g('cr') / 100, qmin = +g('q') || 0, fresh = !!g('fresh'), shelf = g('hide') ? shelfGet() : null;
+    let list = state.books.filter((b) => (!t || (b.tp || []).includes(t))
+      && (y0 == null || (b.y != null && b.y >= y0)) && (y1 == null || (b.y != null && b.y <= y1))
+      && (b.ru || 0) >= ru && (!rr || (b.ru || 0) / b.u >= rr) && (cr == null || (b.cu || 0) / b.u <= cr)
+      && (!qmin || (b.q ?? -1) >= qmin) && (!fresh || (b.lr || 0) > 0) && (!shelf || !shelf[b.id]));
+    const sort = g('sort') || 'q';
+    const key = { q: (b) => b.q ?? -1, ru: (b) => b.ru || 0, rr: (b) => (b.u >= 10 ? (b.ru || 0) / b.u : -1), new: (b) => b.y ?? -9999, old: (b) => -(b.y ?? 9999) }[sort];
+    list = list.map((b, i) => ({ b, i, k: key(b) })).sort((x, y) => y.k - x.k || x.i - y.i).map((x) => x.b);
+    $('#ex-n').textContent = `符合条件 ${fmt(list.length)} 本`;
+    current?.dispose();
+    $('#ex-res').innerHTML = list.length ? '<div class="grid" id="grid"></div>' : '<p class="empty">没有符合条件的书，放宽一两个条件试试。</p>';
+    current = list.length ? mountInfinite($('#grid'), list) : { shown: () => 0, dispose() {} };
+    current.raw = url;
+  };
+  form.addEventListener('change', apply);
+  form.addEventListener('input', debounce((e) => { if (e.target.type === 'number') apply(); }, 400));
+  form.addEventListener('submit', (e) => { e.preventDefault(); apply(); });
+  apply();
+}
+
+/* ---- /map：书籍星图（离线力导布局：translate/quality/gen_map.py） ---- */
+async function renderMap() {
+  const token = routeToken;
+  setPage('书籍星图', '值得读的书按「同一讨论里被一起提到」连成的关系图。');
+  current = { raw: '', shown: () => 0, dispose() { this.ac?.abort(); }, ac: new AbortController() };
+  const ctl = current;
+  main.innerHTML = '<div class="skel">星图加载中…</div>';
+  let M;
+  try { M = await getJSON('/data/map.json'); } catch {
+    if (token !== routeToken) return;
+    main.innerHTML = '<div class="empty"><h2>星图加载失败</h2><p><button class="btn primary" id="retry" type="button">重试</button></p></div>';
+    $('#retry').onclick = () => route();
+    return;
+  }
+  if (token !== routeToken) return;
+  const nodes = M.nodes.map(([id, x, y, r]) => ({ id, x, y, r, b: state.byId.get(id) })).filter((n) => n.b);
+  const at = new Map(M.nodes.map(([id], i) => [i, id]));
+  const nIdx = new Map(nodes.map((n, i) => [n.id, i]));
+  const nb = nodes.map(() => []);
+  const edges = [];
+  for (const [a, b] of M.edges) {
+    const i = nIdx.get(at.get(a)), j = nIdx.get(at.get(b));
+    if (i == null || j == null) continue;
+    edges.push([i, j]); nb[i].push(j); nb[j].push(i);
+  }
+  const rad = (n) => Math.min(11, 2.5 + Math.sqrt(n.r) / 2.2).toFixed(1);
+  main.innerHTML = `<div class="page-h"><h1>书籍星图</h1></div>
+  <p class="sub">${fmt(nodes.length)} 本值得读的书，连线表示 HN 读者常在同一场讨论里一起提到它们，点越大推荐的人越多。拖动平移、滚轮或按钮缩放，悬停看邻居，点击打开。</p>
+  <div class="map-bar"><input id="map-q" type="search" placeholder="在星图里找书（中文或英文书名）" autocomplete="off"><button class="btn" type="button" data-z="1.4">放大</button><button class="btn" type="button" data-z="0.7">缩小</button><button class="btn" type="button" data-z="0">重置</button></div>
+  <div class="map-box" id="map-box"><svg id="map-svg" viewBox="0 0 1000 1000" role="img" aria-label="书籍关系星图">
+    <g class="m-edges">${edges.map(([i, j]) => `<line x1="${nodes[i].x}" y1="${nodes[i].y}" x2="${nodes[j].x}" y2="${nodes[j].y}" data-a="${i}" data-b="${j}"/>`).join('')}</g>
+    <g class="m-nodes">${nodes.map((n, i) => `<circle cx="${n.x}" cy="${n.y}" r="${rad(n)}" style="--r:${rad(n)}" data-i="${i}"><title>${esc(T(n.b))}</title></circle>`).join('')}</g>
+    <g class="m-labels">${M.labels.map(([t, x, y]) => `<text x="${x}" y="${y}" text-anchor="middle">${esc(t)}</text>`).join('')}</g>
+  </svg><div class="gem-tip" hidden></div></div>
+  <div class="sr-only"><ul>${nodes.map((n) => `<li><a href="/book/${encodeURIComponent(n.id)}">${esc(T(n.b))}</a></li>`).join('')}</ul></div>`;
+  const svg = $('#map-svg'), box = $('#map-box'), tip = box.querySelector('.gem-tip'), sig = { signal: ctl.ac.signal };
+  let vb = [0, 0, 1000, 1000];
+  // 缩放时标签字号与圆点半径反向补偿，放大后不会糊成一片
+  const setVB = () => {
+    svg.setAttribute('viewBox', vb.map((v) => v.toFixed(1)).join(' '));
+    const k = vb[2] / 1000;
+    svg.style.setProperty("--lf", `${(22 * k).toFixed(2)}px`);
+    svg.style.setProperty('--s', Math.pow(k, 0.6).toFixed(3));
+  };
+  const zoom = (f, cx = vb[0] + vb[2] / 2, cy = vb[1] + vb[3] / 2) => {
+    if (!f) { vb = [0, 0, 1000, 1000]; return setVB(); }
+    const w = Math.min(1000, Math.max(120, vb[2] / f)), k = w / vb[2];
+    vb = [cx - (cx - vb[0]) * k, cy - (cy - vb[1]) * k, w, w];
+    setVB();
+  };
+  const toSvg = (e) => { const r = svg.getBoundingClientRect(); return [vb[0] + ((e.clientX - r.left) / r.width) * vb[2], vb[1] + ((e.clientY - r.top) / r.height) * vb[3]]; };
+  main.querySelectorAll('[data-z]').forEach((btn) => btn.addEventListener('click', () => zoom(+btn.dataset.z), sig));
+  svg.addEventListener('wheel', (e) => { e.preventDefault(); const [x, y] = toSvg(e); zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, x, y); }, { passive: false, ...sig });
+  let drag = null;
+  svg.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, vb: [...vb], moved: false }; }, sig);
+  window.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const r = svg.getBoundingClientRect(), dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    if (!drag.moved) return;
+    vb = [drag.vb[0] - (dx / r.width) * vb[2], drag.vb[1] - (dy / r.height) * vb[3], vb[2], vb[3]];
+    setVB();
+  }, sig);
+  window.addEventListener('pointerup', () => { setTimeout(() => { drag = null; }); }, sig);
+  const lit = (i) => {
+    svg.classList.toggle('focus', i != null);
+    svg.querySelectorAll('.on').forEach((el) => el.classList.remove('on'));
+    if (i == null) return;
+    const set = new Set([i, ...nb[i]]);
+    svg.querySelectorAll('circle').forEach((c) => { if (set.has(+c.dataset.i)) c.classList.add('on'); });
+    svg.querySelectorAll('line').forEach((l) => { if (+l.dataset.a === i || +l.dataset.b === i) l.classList.add('on'); });
+  };
+  const showTip = (i, c) => {
+    const n = nodes[i];
+    tip.innerHTML = `<b>${esc(T(n.b))}</b><span>${fmt(n.b.ru || 0)} 人推荐${n.b.q != null ? ` · 指数 ${n.b.q}` : ''} · ${nb[i].length} 本相邻</span>`;
+    tip.hidden = false;
+    const wr = box.getBoundingClientRect(), cr = c.getBoundingClientRect();
+    tip.style.left = Math.min(Math.max(cr.left - wr.left - 30, 0), wr.width - 200) + 'px';
+    tip.style.top = Math.max(cr.top - wr.top - 58, 0) + 'px';
+  };
+  svg.addEventListener('pointerover', (e) => { const c = e.target.closest('circle'); if (c && !drag?.moved) { lit(+c.dataset.i); showTip(+c.dataset.i, c); } }, sig);
+  svg.addEventListener('pointerout', (e) => { if (e.target.closest('circle')) { lit(null); tip.hidden = true; } }, sig);
+  svg.addEventListener('click', (e) => { const c = e.target.closest('circle'); if (c && !drag?.moved) go(`/book/${encodeURIComponent(nodes[+c.dataset.i].id)}`); }, sig);
+  $('#map-q').addEventListener('input', debounce((e) => {
+    const qq = norm(e.target.value);
+    if (!qq) { lit(null); tip.hidden = true; return; }
+    const i = nodes.findIndex((n) => norm(T(n.b)).includes(qq) || norm(n.b.t).includes(qq));
+    if (i < 0) { lit(null); tip.innerHTML = '<span>星图里没有这本书（只收录值得读指数或推荐人数靠前的书）</span>'; tip.hidden = false; tip.style.left = '8px'; tip.style.top = '8px'; return; }
+    vb = [nodes[i].x - 200, nodes[i].y - 200, 400, 400];
+    setVB();
+    lit(i);
+    requestAnimationFrame(() => showTip(i, svg.querySelector(`circle[data-i="${i}"]`)));
+  }, 250), sig);
 }
 
 const ensureCoIndex = () => (state.coIndexP ??= getJSON('/data/co-index.json').then((m) => { state.coIndex = m; }).catch(() => { state.coIndex = {}; }));
@@ -640,6 +873,15 @@ function renderAbout() {
   <p>分数更看重「多少位<i>不同的人</i>提到过」，而不是原始提及次数，所以一个人刷屏不会霸榜。「上升最快」比较的是近期提及与该书历史份额的变化。</p>
   <h2>「推荐」与「提及」的区别</h2>
   <p>只数提及会让一本被讨论（甚至被警告）的书看起来像人气好书。因此每条提及都被模型标注为 <i>推荐</i>、<i>中性</i>、<i>批评</i> 或 <i>与书无关</i>。「推荐人数」统计至少推荐过一次的不同的人；与书无关的提及会被剔除。<a href="/recommended">最多推荐</a>页按推荐人数排名。标注与更仔细的参考模型一致率约 85%，会有噪声。</p>
+  <h2 id="q">值得读指数怎么算</h2>
+  <p>指数（0–100）想回答一个问题：这本书值不值得花时间读。它只给至少 5 位不同评论者提及过的书，由四项加权：</p>
+  <ul>
+    <li><b>口碑（45%）</b>：推荐人数 ÷ 提及人数。推荐率会向全站平均值（约 56%）做平滑，所以 17 人里 17 人推荐的书，不会排在 300 人里 260 人推荐的书前面；批评者占比再扣一次分。</li>
+    <li><b>影响力（30%）</b>：推荐人数，取对数，避免超级畅销书一家独大。</li>
+    <li><b>持久度（15%）</b>：从第一次被提及到今天，有多少个年份一直有人推荐。只红过一两年的书分数低。</li>
+    <li><b>新鲜度（10%）</b>：近三年的推荐占这本书全部推荐的比例，看它今天还有没有人读。</li>
+  </ul>
+  <p>每项先换算成在所有计分书籍中的百分位再加权，详情页能看到四个分项。卡片和详情页上的「为什么值得读」由 AI 根据 HN 原评论归纳，<a href="/lindy">林迪榜</a>用到的初版年份也用 AI 修正过 Open Library 的再版年份，两者都可能有个别错误。</p>
   <h2>来源与致谢</h2>
   <p>本站是 <a href="https://hackerbooks.org" rel="noopener" target="_blank">hackerbooks.org</a> 的中文版。原站由 <a href="https://rohitshinde.in" rel="author" target="_blank" rel="noopener">roansh</a> 构建，感谢其公开的数据管道（完整数据集可在原站获取）。书籍元数据与封面来自 <a href="https://openlibrary.org" rel="noopener" target="_blank">Open Library</a>；评论文字版权归原作者所有，页面上只保留摘录并链接回原帖。</p>
   <p>灵感来自 Andrej Karpathy 的 <a href="https://hackertube.org" rel="noopener" target="_blank">HackerTube</a>。中文版由 <a href="https://www.qiaomu.ai/" target="_blank" rel="noopener">向阳乔木</a> 维护，代码在 <a href="https://github.com/joeseesun/hackerbooks-cn" rel="noopener" target="_blank">GitHub</a> 开源。</p>
@@ -684,6 +926,56 @@ function yearsChart(years, m) {
   <line x1="${L}" x2="${W}" y1="${H - B}" y2="${H - B}"/><line x1="${L}" x2="${W}" y1="${T}" y2="${T}" stroke-dasharray="3 4"/>
   <text x="${L - 4}" y="${T + 4}" text-anchor="end">${max}</text><text x="${L - 4}" y="${H - B}" text-anchor="end">0</text>
   ${bars}${label(0, 'start')}${ys.length > 4 ? label(mid, 'middle') : ''}${label(ys.length - 1, 'end')}</svg>`;
+}
+
+/** 历年口碑：每年推荐/中性/批评的不同评论者人数堆叠柱（数据 sy = {年: [推荐, 中性, 批评]}）。 */
+function stanceYearsChart(sy, m) {
+  const keys = Object.keys(sy || {}).map(Number);
+  if (!keys.length) return '';
+  const y0 = Math.min(m.first_year, ...keys), y1 = Math.max(m.last_year, ...keys);
+  const ys = Array.from({ length: y1 - y0 + 1 }, (_, i) => y0 + i);
+  const vals = ys.map((y) => sy[y] || [0, 0, 0]);
+  const max = Math.max(...vals.map((v) => v[0] + v[1] + v[2]), 1);
+  const W = 640, H = 150, L = 30, B = 22, T = 8, bw = (W - L) / ys.length, k = (H - B - T) / max;
+  const bars = ys.map((y, i) => {
+    const [r, n, c] = vals[i];
+    let top = H - B;
+    const seg = (v, cls) => { if (!v) return ''; const h = v * k; top -= h; return `<rect class="${cls}" x="${(L + i * bw + bw * 0.12).toFixed(1)}" y="${top.toFixed(1)}" width="${(bw * 0.76).toFixed(1)}" height="${h.toFixed(1)}"/>`; };
+    return `<g><title>${y} 年：${r} 人推荐、${n} 人中性、${c} 人批评</title>${seg(r, 's-r')}${seg(n, 's-n')}${seg(c, 's-c')}</g>`;
+  }).join('');
+  const label = (i, anchor) => `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="${anchor}">${ys[i]}</text>`;
+  const mid = Math.floor(ys.length / 2);
+  return `<svg class="chart st-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${y0} 至 ${y1} 年每年推荐、中性、批评的评论者人数">
+  <line x1="${L}" x2="${W}" y1="${H - B}" y2="${H - B}"/><line x1="${L}" x2="${W}" y1="${T}" y2="${T}" stroke-dasharray="3 4"/>
+  <text x="${L - 4}" y="${T + 4}" text-anchor="end">${max}</text><text x="${L - 4}" y="${H - B}" text-anchor="end">0</text>
+  ${bars}${label(0, 'start')}${ys.length > 4 ? label(mid, 'middle') : ''}${label(ys.length - 1, 'end')}</svg>
+  <p class="slg"><span><i class="dot s-r"></i>推荐</span><span><i class="dot s-n"></i>中性</span><span><i class="dot s-c"></i>批评</span><span>（按不同评论者计）</span></p>`;
+}
+function driftNote(dr) {
+  if (dr == null || Math.abs(dr) < 0.1) return '';
+  const pp = Math.round(Math.abs(dr) * 100);
+  return `<p class="sub">口碑${dr < 0 ? '在走低' : '在走高'}：2021 年以来的推荐率比 2016 年以前${dr < 0 ? '低' : '高'} ${pp} 个百分点。${dr < 0 ? '可能是内容过时，或者 HN 读者的看法变了。' : ''}</p>`;
+}
+
+/** 值得读指数与四个分项（分项是在有足够样本的书中的百分位）。 */
+const QB_LABELS = [['口碑', '推荐率（平滑后）扣除批评'], ['影响力', '推荐人数'], ['持久度', '多少年里一直有人推荐'], ['新鲜度', '近三年的推荐占比']];
+function qualityHTML(full, d) {
+  const q = d?.q ?? full.q;
+  if (q == null) return '';
+  const qb = d?.qb;
+  return `<div class="qbox"><div class="qn"><b>${q}</b><span>值得读指数</span></div>
+  ${qb ? `<ul class="qbars">${QB_LABELS.map(([l, t], i) => `<li title="${t}：高于 ${qb[i]}% 的书"><span>${l}</span><i><em style="width:${qb[i]}%"></em></i><b>${qb[i]}</b></li>`).join('')}</ul>` : ''}
+  <a class="qhow" href="/about#q">怎么算的</a></div>`;
+}
+
+/** 为什么值得读：AI 依据 HN 评论归纳。 */
+function whyHTML(full, d) {
+  const w = full.w, y = d?.why;
+  if (!w && !y) return '';
+  return `<div class="whybox"><h2>为什么值得读</h2>${w ? `<p class="why-lead">${esc(w)}</p>` : ''}
+  ${y?.why?.length ? `<ul class="why-list">${y.why.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+  ${y?.fit ? `<p class="why-meta"><b>适合</b>${esc(y.fit)}</p>` : ''}${y?.warn ? `<p class="why-meta"><b>提醒</b>${esc(y.warn)}</p>` : ''}
+  <p class="why-note">由 AI 根据下方 HN 读者评论归纳，可能有偏差。</p></div>`;
 }
 
 /** 推荐/中性/批评三类评论者的占比条。 */
@@ -735,7 +1027,9 @@ const isbnLink = d?.isbn ? `<a class="btn" href="https://openlibrary.org/isbn/${
       ${span ? `<div class="stat"><b>${span}</b><span>提及年份跨度</span></div>` : ''}
     </div>
     ${stanceBarHTML(d?.stance)}
+    ${qualityHTML(full, d)}
     <div class="chips">${topics}</div>
+    ${whyHTML(full, d)}
     ${descHTML(full)}
     <div id="buy">${buyHTML({ ...full, isbn: d?.isbn })}</div>
     <div class="shelf-row"><span class="shelf-lbl">我的标记</span>
@@ -745,7 +1039,7 @@ const isbnLink = d?.isbn ? `<a class="btn" href="https://openlibrary.org/isbn/${
     </div>
     <div class="links"><a class="btn primary" href="https://openlibrary.org/works/${esc(full.id)}" target="_blank" rel="noopener">在 Open Library 查看</a>${isbnLink}<button class="btn" type="button" id="share-img-btn">生成分享图</button><a class="btn" href="https://www.goodreads.com/search?q=${encodeURIComponent([enName(full) || full.t, (full.a || [])[0]].filter(Boolean).join(' '))}" target="_blank" rel="noopener">Goodreads 书评</a>${trendLink}</div>
   </div>
-  ${d?.years ? `<section class="sec"><h2>历年提及次数</h2>${yearsChart(d.years, state.meta)}</section>` : ''}
+  ${d?.sy ? `<section class="sec"><h2>历年口碑</h2>${driftNote(d.dr)}${stanceYearsChart(d.sy, state.meta)}</section>` : d?.years ? `<section class="sec"><h2>历年提及次数</h2>${yearsChart(d.years, state.meta)}</section>` : ''}
   ${d ? `<section class="sec" id="comments-sec"><h2>Hacker News 上怎么说</h2><ul class="comments" id="comments"></ul><p><button class="btn" id="more-comments" type="button" hidden>显示更多评论</button></p></section>` : '<section class="sec"><p class="sub">评论加载中…</p></section>'}
   <div id="related">${relatedHTML(d)}</div>
 </article>`;
@@ -1382,16 +1676,41 @@ async function renderTrends(q, restore, scrollTo) {
   <p class="sub">有些书在 HN 常青不倒，有些书爆红一两年就消失。这里的每个数字都是该书占当年全部书籍提及的份额（按不同评论者计），所以 HN 自身的增长不会影响对比。</p>
   <p class="sub"><a href="/years">历年年度书（${T.years[0]}–${ly}）→</a> · <a href="/underrated">被低估的书 →</a></p>
   ${bumpSectionHTML(T)}${evergreensHTML(T)}${wavesHTML(T)}
+  <section class="tr-sec" id="tr-heat" aria-labelledby="tr-h-heat"><h2 id="tr-h-heat">话题冷热</h2>
+    <p class="sub">每个话题的书被多少 HN 评论者提到，占当年全部提书人数的比例。每一行按自己的最高值着色，所以看的是这个话题自身的升降；右侧是最近两年相对 2012–2013 年的倍数。悬停看具体数字。</p>
+    <div class="heat" id="heat"></div></section>
   <section class="tr-sec" id="tr-gems" aria-labelledby="tr-h-gem"><h2 id="tr-h-gem">被低估的书</h2><div class="gem-wrap" id="gem-chart"></div><div class="gem-list" id="gem-list"></div></section>
   <section class="tr-sec" id="tr-compare" aria-labelledby="tr-h-cmp"><h2 id="tr-h-cmp">对比书籍</h2>
     <p class="sub">${T.years[0]}–${ly} 年各书占全部书籍提及的份额（${ly} 年数据到 11 月 1 日）。最多添加 ${TR_MAX} 本。${asked.length && !valid.length ? '链接里的书没有趋势数据，先给你看一组默认对比。' : ''}</p>
     <div id="tr-cmp"></div></section>`;
   mountBump($('#tr-bump'), T, ctl);
   mountGems(T);
+  mountHeat();
   mountCompare($('#tr-cmp'), T, ids, ctl);
   if (restore) window.scrollTo(0, restore.y);
   else if (asked.length) $('#tr-compare').scrollIntoView({ block: 'start' });
   else if (scrollTo) $(`#${scrollTo}`)?.scrollIntoView({ block: 'start' });
+}
+
+/* ---- 话题冷热热力图（data/topic-years.json：千分比） ---- */
+function mountHeat() {
+  const token = routeToken;
+  getJSON('/data/topic-years.json').then((H) => {
+    const host = $('#heat');
+    if (!host || token !== routeToken) return;
+    const ys = H.years, last = ys.slice(-2), base = ys.filter((y) => y >= 2012 && y <= 2013);
+    const avg = (v, yy) => yy.reduce((a, y) => a + (v[y] || 0), 0) / yy.length;
+    const rows = state.topics.filter((t) => H.topics[t.slug]).map((t) => {
+      const v = H.topics[t.slug];
+      return { t, v, max: Math.max(...ys.map((y) => v[y] || 0), 0.1), ratio: avg(v, last) / Math.max(avg(v, base), 0.1) };
+    }).sort((a, b) => b.ratio - a.ratio);
+    const head = ys.map((y) => `<th scope="col">${y % 2 === 0 ? `’${String(y).slice(2)}` : ''}</th>`).join('');
+    const body = rows.map(({ t, v, max, ratio }) => `<tr><th scope="row"><a href="/topic/${encodeURIComponent(t.slug)}">${esc(t.name)}</a></th>${ys.map((y) => {
+      const x = v[y] || 0;
+      return `<td style="--a:${Math.round((100 * x) / max)}%" title="${esc(t.name)} · ${y} 年：${(x / 10).toFixed(1)}%"></td>`;
+    }).join('')}<td class="heat-r">${ratio >= 1 ? '↑' : '↓'}${ratio.toFixed(1)}×</td></tr>`).join('');
+    host.innerHTML = `<div class="heat-scroll"><table><thead><tr><th></th>${head}<th></th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }).catch(() => { const h = $('#heat'); if (h) h.innerHTML = '<p class="sub">数据加载失败。</p>'; });
 }
 
 /* ---- /years：历年年度书时间线 ---- */
@@ -1439,7 +1758,19 @@ function setActiveNav(name, slug) {
     if (on) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
+  // 当前页在「更多」里时自动展开，让用户看得到自己在哪
+  if (!slug && document.querySelector(`#nav-extra a[data-route="${CSS.escape(name)}"]`)) setNavMore(true, false);
 }
+/** 侧栏「更多」：就地展开/收起；手动操作的状态记在本机。 */
+function setNavMore(open, remember = true) {
+  const btn = $('#nav-more'), list = $('#nav-extra');
+  if (!btn || !list) return;
+  btn.setAttribute('aria-expanded', String(open));
+  list.hidden = !open;
+  if (remember) store.set('hb.navMore', open);
+}
+$('#nav-more')?.addEventListener('click', () => setNavMore($('#nav-more').getAttribute('aria-expanded') !== 'true'));
+if (store.get('hb.navMore', false)) setNavMore(true, false);
 
 /** 仅靠 top 切片无法正确渲染的路由。 */
 function needsFull(name, seg, query) {
@@ -1447,6 +1778,7 @@ function needsFull(name, seg, query) {
     case 'home': case 'top':
       return !!(query.get('dec') || +query.get('since'));
     case 'rising': case 'trends': case 'recommended': case 'years': case 'underrated':
+    case 'best': case 'lindy': case 'overrated': case 'explore': case 'map':
       return true;
     case 'search':
       return !!(query.get('q') || '').trim();
@@ -1487,6 +1819,11 @@ function route() {
       case 'top': renderTop(query, restore); break;
       case 'recommended': renderRecommended(query, restore); break;
       case 'rising': renderRising(query, restore); break;
+      case 'best': renderBest(query, restore); break;
+      case 'lindy': renderLindy(query, restore); break;
+      case 'overrated': renderOverrated(query, restore); break;
+      case 'explore': renderExplore(query); break;
+      case 'map': renderMap(); break;
       case 'trends': renderTrends(query, restore); break;
       case 'underrated': renderTrends(query, restore, 'tr-gems'); break;
       case 'years': renderYears(restore); break;
@@ -1500,6 +1837,7 @@ function route() {
     }
     if (current) current.raw = raw;
     window.scrollTo(0, restore ? restore.y : 0);
+    if (location.hash.length > 1 && !restore) { try { $(location.hash)?.scrollIntoView({ block: 'start' }); } catch { /* 非法选择器 */ } }
   };
 
   if (!state.full && needsFull(name, seg, query)) {
@@ -1640,9 +1978,17 @@ $('#search-form').addEventListener('submit', (e) => {
   $('#q').blur();
 });
 
+// 话题分两组：大众阅读在前，技术在后（AI 时代程序员之外的读者更多，HN 自己也在少聊编程书）。
+const TECH_TOPICS = new Set(['programming', 'computer-science', 'software-engineering', 'systems', 'hardware', 'web', 'security', 'data-statistics', 'ai-ml', 'lisp-functional']);
+const topicGroups = () => {
+  const gen = state.topics.filter((t) => !TECH_TOPICS.has(t.slug));
+  return [[...gen.filter((t) => t.slug !== 'other'), ...gen.filter((t) => t.slug === 'other')], state.topics.filter((t) => TECH_TOPICS.has(t.slug))];
+};
 function renderSidebarTopics() {
-  $('#nav-topics').innerHTML = state.topics.map((t) =>
-    `<li><a href="/topic/${encodeURIComponent(t.slug)}" data-slug="${esc(t.slug)}"><span>${esc(t.name)}</span><span class="count">${fmt(t.n)}</span></a></li>`).join('');
+  const li = (t) => `<li><a href="/topic/${encodeURIComponent(t.slug)}" data-slug="${esc(t.slug)}"><span>${esc(t.name)}</span><span class="count">${fmt(t.n)}</span></a></li>`;
+  const [gen, tech] = topicGroups();
+  $('#nav-topics').innerHTML = gen.map(li).join('');
+  $('#nav-topics-tech').innerHTML = tech.map(li).join('');
 }
 
 /* ============================== 快捷键 ============================== */
