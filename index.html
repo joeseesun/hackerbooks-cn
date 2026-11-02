@@ -23,15 +23,16 @@ try { var t = localStorage.getItem('hb.theme'); if (t === 'light' || t === 'dark
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebSite","name":"黑客书架","alternateName":"Hacker Books 中文版","url":"https://hackerbooks.qiaomu.ai/","description":"Hacker News 评论中被提及的 1.5 万多本书，按不同提及人数排名","inLanguage":"zh-CN"}
 </script>
+<link rel="alternate" type="application/rss+xml" title="黑客书架 · 上升最快" href="/feed.xml">
 <link rel="stylesheet" href="fonts/fonts.css?v=4fe36c0f">
-<link rel="modulepreload" href="app.js?v=10">
+<link rel="modulepreload" href="app.js?v=11">
 <!-- 首屏数据与 JS 并行下载：省掉「等 app.js 启动后才发起数据请求」的一个往返 -->
 <link rel="preload" as="fetch" href="data/books-top.json">
 <link rel="preload" as="fetch" href="data/meta.json">
 <link rel="preload" as="fetch" href="data/topics.json">
 <link rel="preload" as="font" type="font/woff2" href="fonts/gr-0-6d89986e.woff2" crossorigin>
 <link rel="preload" as="font" type="font/woff2" href="fonts/newsreader-latin-500-normal.woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=15">
+<link rel="stylesheet" href="app.css?v=16">
 </head>
 <body>
 <a class="skip" href="#main">跳到正文</a>
@@ -73,6 +74,7 @@ try { var t = localStorage.getItem('hb.theme'); if (t === 'light' || t === 'dark
       <li><a href="#/rising" data-route="rising"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>上升最快</a></li>
       <li><a href="#/trends" data-route="trends"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2.5 0 2.5-8 5-8s2.5 10 5 10 2.5-6 4-6 2 2 3 2" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>趋势</a></li>
       <li><a href="#/foryou" data-route="foryou"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-8-5.3-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.7-8 11-8 11z" fill="currentColor"/></svg>为你推荐</a></li>
+      <li><a href="#/list" data-route="list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>我的书单</a></li>
       <li><a href="#/about" data-route="about"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 11v6M12 7.5v.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>关于本站</a></li>
     </ul>
     <h2 class="nav-h">话题分类</h2>
@@ -138,7 +140,7 @@ try { var t = localStorage.getItem('hb.theme'); if (t === 'light' || t === 'dark
 </dialog>
 
 <noscript><p class="noscript">浏览书架需要启用 JavaScript。</p></noscript>
-<script type="module" src="app.js?v=10"></script>
+<script type="module" src="app.js?v=11"></script>
 <script defer src="https://umami.qiaomu.ai/script.js" data-website-id="5625e3a1-6a6c-4fca-87c6-bdcd984eba43"></script>
 </body>
 </html>

@@ -47,7 +47,7 @@ const URLS = {
 const TOP_N = 600;
 const HOME_CAP = 120; // 今日书架每日限量：每天换一批，看全部去历史总榜
 const EAGER = 12; // 首屏卡片用 eager 高优先级加载封面
-const DATA_V = 4; // 详情 JSON 缓存版本：数据更新时 +1（绕过浏览器里的旧强缓存）
+const DATA_V = 5; // 详情 JSON 缓存版本：数据更新时 +1（绕过浏览器里的旧强缓存）
 
 /*
  * state.books 是当前最优索引：全量索引到达前用 top-TOP_N 切片（state.full），之后是全部。
@@ -253,10 +253,23 @@ function recLine(b) {
   return `<p class="rec rec-st" title="${tip}"><span class="rl">推荐 <b>${fmt(b.ru)}</b> · 提及 <b>${fmt(b.u)}</b></span><span class="rs"><b>${fmt(b.ru)}</b> 推荐 · ${fmt(b.u)}</span></p>`;
 }
 
+/* ------- 书单（只存本机 localStorage） ------- */
+const WL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+const wlGet = () => store.get('wl', []);
+const wlHas = (id) => wlGet().includes(id);
+function wlToggle(id) {
+  const list = wlGet();
+  const i = list.indexOf(id);
+  if (i >= 0) list.splice(i, 1); else list.unshift(id);
+  store.set('wl', list);
+  return i < 0;
+}
+
 function cardHTML(b, eager = false) {
   const span = yearSpan(b);
   const badge = span ? `<span class="badge" title="提及年份 ${esc(span)}">${span}</span>` : '';
-  return `<a class="card" href="#/book/${encodeURIComponent(b.id)}">${coverHTML(b, false, badge, eager)}
+  const wl = `<button class="wl${wlHas(b.id) ? ' on' : ''}" data-wl="${esc(b.id)}" type="button" aria-label="加入书单">${WL_ICON}</button>`;
+  return `<a class="card" href="#/book/${encodeURIComponent(b.id)}">${coverHTML(b, false, badge, eager)}${wl}
   <h3>${esc(T(b))}</h3>${enName(b) ? `<p class="t-en">${esc(enName(b))}</p>` : ''}<p class="au">${esc((b.a || []).join(', '))}</p>
   ${recLine(b)}</a>`;
 }
@@ -497,7 +510,7 @@ function renderAbout() {
   <p>只数提及会让一本被讨论（甚至被警告）的书看起来像人气好书。因此每条提及都被模型标注为 <i>推荐</i>、<i>中性</i>、<i>批评</i> 或 <i>与书无关</i>。「推荐人数」统计至少推荐过一次的不同的人；与书无关的提及会被剔除。<a href="#/recommended">最多推荐</a>页按推荐人数排名。标注与更仔细的参考模型一致率约 85%，会有噪声。</p>
   <h2>来源与致谢</h2>
   <p>本站是 <a href="https://hackerbooks.org" rel="noopener" target="_blank">hackerbooks.org</a> 的中文版。原站由 <a href="https://rohitshinde.in" rel="author" target="_blank" rel="noopener">roansh</a> 构建，感谢其公开的数据管道（完整数据集可在原站获取）。书籍元数据与封面来自 <a href="https://openlibrary.org" rel="noopener" target="_blank">Open Library</a>；评论文字版权归原作者所有，页面上只保留摘录并链接回原帖。</p>
-  <p>灵感来自 Andrej Karpathy 的 <a href="https://hackertube.org" rel="noopener" target="_blank">HackerTube</a>。中文版由 <a href="https://tuijian.qiaomu.ai/" target="_blank" rel="noopener">乔木</a> 维护。</p>
+  <p>灵感来自 Andrej Karpathy 的 <a href="https://hackertube.org" rel="noopener" target="_blank">HackerTube</a>。中文版由 <a href="https://tuijian.qiaomu.ai/" target="_blank" rel="noopener">乔木</a> 维护，代码在 <a href="https://github.com/joeseesun/hackerbooks-cn" rel="noopener" target="_blank">GitHub</a> 开源。</p>
   <h2>隐私</h2>
   <p>没有账号，没有跨站跟踪。「为你推荐」完全在你的浏览器里根据你打开过的书计算，只存在本机 localStorage。</p>
   </article>`;
@@ -589,7 +602,7 @@ const isbnLink = d?.isbn ? `<a class="btn" href="https://openlibrary.org/isbn/${
     <div class="chips">${topics}</div>
     ${descHTML(full)}
     <div id="buy">${buyHTML({ ...full, isbn: d?.isbn })}</div>
-    <div class="links"><a class="btn primary" href="https://openlibrary.org/works/${esc(full.id)}" target="_blank" rel="noopener">在 Open Library 查看</a>${isbnLink}${trendLink}</div>
+    <div class="links"><a class="btn primary" href="https://openlibrary.org/works/${esc(full.id)}" target="_blank" rel="noopener">在 Open Library 查看</a>${isbnLink}<button class="btn" type="button" data-wl="${esc(full.id)}">${wlHas(full.id) ? '已在书单' : '想读'}</button><button class="btn" type="button" id="share-img-btn">生成分享图</button>${trendLink}</div>
   </div>
   ${d?.years ? `<section class="sec"><h2>历年提及次数</h2>${yearsChart(d.years, state.meta)}</section>` : ''}
   ${d ? `<section class="sec" id="comments-sec"><h2>Hacker News 上怎么说</h2><ul class="comments" id="comments"></ul><p><button class="btn" id="more-comments" type="button" hidden>显示更多评论</button></p></section>` : '<section class="sec"><p class="sub">评论加载中…</p></section>'}
@@ -598,9 +611,12 @@ const isbnLink = d?.isbn ? `<a class="btn" href="https://openlibrary.org/isbn/${
 }
 
 /** 相关书籍需要全量索引来解析 ID（加载完成前为空，renderBook 会补渲染）。 */
+function recSection(ids, title) {
+  const books = state.full ? (ids || []).map((id) => state.byId.get(id)).filter(Boolean) : [];
+  return books.length ? `<section class="sec"><h2>${esc(title)}</h2><div class="row">${books.map((b) => cardHTML(b)).join('')}</div></section>` : '';
+}
 function relatedHTML(d) {
-  const related = state.full ? (d?.related || []).map((id) => state.byId.get(id)).filter(Boolean) : [];
-  return related.length ? `<section class="sec"><h2>相关书籍</h2><div class="row">${related.map((b) => cardHTML(b)).join('')}</div></section>` : '';
+  return recSection(d?.co, '同一讨论中，HN 读者一起提到') + recSection(d?.related, '相关书籍');
 }
 
 function commentHTML(c, title) {
@@ -614,6 +630,79 @@ function commentHTML(c, title) {
 }
 
 let routeToken = 0;
+let shareCtx = null;
+const clipText = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+function wrapText(g, text, x, y, maxW, lh) {
+  let line = '', yy = y;
+  for (const ch of text) {
+    if (g.measureText(line + ch).width > maxW) { g.fillText(line, x, yy); line = ch; yy += lh; }
+    else line += ch;
+  }
+  if (line) g.fillText(line, x, yy);
+  return yy;
+}
+/** 分享图：1080×1350，封面 + 中文书名 + 一句高赞推荐，纯本地 canvas 生成。 */
+async function showShareImage() {
+  if (!shareCtx) return;
+  const { book, d } = shareCtx;
+  const dlg = document.createElement('dialog');
+  dlg.className = 'share-box';
+  dlg.innerHTML = `<canvas width="1080" height="1350"></canvas><div class="share-actions"><button class="btn primary" type="button" id="share-dl">下载图片</button><button class="btn" type="button" id="share-close">关闭</button></div>`;
+  document.body.appendChild(dlg);
+  dlg.showModal();
+  dlg.querySelector('#share-close').onclick = () => dlg.close();
+  dlg.addEventListener('close', () => dlg.remove());
+  const cv = dlg.querySelector('canvas'), g = cv.getContext('2d');
+  await document.fonts.ready;
+  g.fillStyle = '#f7f6f2'; g.fillRect(0, 0, 1080, 1350);
+  g.fillStyle = '#121212'; g.fillRect(60, 60, 960, 4);
+  g.font = '700 42px "HP Serif", serif'; g.fillText('黑客书架', 60, 155);
+  g.font = '400 26px Newsreader, serif'; g.fillStyle = '#767676'; g.fillText('Hacker Books 中文版', 248, 150);
+  const cy = 200;
+  if (book.c != null) {
+    const img = new Image();
+    img.src = coverUrl(book.c);
+    try { await img.decode(); g.drawImage(img, 330, cy, 420, 630); } catch { /* 封面失败留白 */ }
+  }
+  let y = cy + 630 + 110;
+  g.fillStyle = '#121212';
+  g.font = '700 68px "HP Serif", serif';
+  g.fillText(clipText(T(book), 13), 60, y); y += 76;
+  if (enName(book)) {
+    g.font = '400 32px Newsreader, serif'; g.fillStyle = '#555553';
+    g.fillText(clipText(enName(book), 50), 60, y); y += 58;
+  }
+  const q = (d?.comments || []).find((c) => c.sv === 'r');
+  if (q) {
+    g.font = '400 30px "PingFang SC", sans-serif'; g.fillStyle = '#121212';
+    y = wrapText(g, `「${clipText((q.zh || q.x || '').replace(/\s+/g, ' '), 80)}」`, 60, y + 30, 960, 44) + 20;
+  }
+  g.fillStyle = '#767676'; g.font = '400 26px "PingFang SC", sans-serif';
+  g.fillText(`${fmt(book.u)} 位 HN 读者提及 · hackerbooks.qiaomu.ai`, 60, 1290);
+  dlg.querySelector('#share-dl').onclick = () => cv.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `hackerbooks-${book.id}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, 'image/png');
+}
+function renderList(restore) {
+  const ids = wlGet();
+  setPage('我的书单', '存在本机浏览器里，不会上传。');
+  if (!ids.length) {
+    main.innerHTML = `<div class="page-h"><h1>我的书单</h1></div><p class="sub">在书卡右上角或详情页点「想读」，把书收进这里。只存在本机浏览器。</p><p class="empty">书单还是空的，去<a href="#/">今日书架</a>淘几本。</p>`;
+    return;
+  }
+  main.innerHTML = `<div class="page-h"><h1>我的书单</h1></div><p class="sub">${fmt(ids.length)} 本 · 只存在本机。 <button class="btn" id="wl-copy" type="button">复制书单</button> <button class="btn" id="wl-clear" type="button">清空书单</button></p><div class="grid" id="grid"></div>`;
+  const books = ids.map((id) => state.byId.get(id)).filter(Boolean);
+  current = mountInfinite($('#grid'), books, restore?.shown || 0);
+  $('#wl-copy').onclick = async () => {
+    const text = '黑客书架 · 我的书单\n' + books.map((b, i) => `${i + 1}. ${T(b)}（${enName(b) || b.t}）`).join('\n') + '\n' + location.origin;
+    try { await navigator.clipboard.writeText(text); $('#wl-copy').textContent = '已复制 ✓'; } catch { $('#wl-copy').textContent = '复制失败，请手动选择'; }
+  };
+  $('#wl-clear').onclick = () => { store.set('wl', []); route(); };
+}
 const BOOK_REDIRECTS = { OL999456W: 'OL1975712W', OL28649132W: 'OL82563W', OL27739326W: 'OL21385222W' };
 async function renderBook(id) {
   if (BOOK_REDIRECTS[id]) {
@@ -641,10 +730,11 @@ async function renderBook(id) {
     return;
   }
   const book = { ...base, ...d };
+  shareCtx = { book, d };
   setPage(pageTitle(book), `《${T(book)}》（${(book.a || []).join(', ')}）— ${fmt(book.u)} 位 Hacker News 评论者提及。${d.desc || ''}`);
   if (!base) profile.record(book);
   main.innerHTML = bookHTML(base || book, d);
-  if (!state.full && d.related?.length) {
+  if (!state.full && (d.related?.length || d.co?.length)) {
     ensureFull().then(() => {
       if (token === routeToken && $('#related')) $('#related').innerHTML = relatedHTML(d);
     }, () => { /* 没有相关书 */ });
@@ -659,7 +749,7 @@ async function renderBook(id) {
     btn.hidden = shown >= comments.length;
     const total = (base || book).n || 0;
     if (btn.hidden && total > comments.length) {
-      btn.insertAdjacentHTML('afterend', `<span class="sub">每本书只保留讨论最多的 ${comments.length} 条摘录（共 ${fmt(total)} 次提及）。全部记录见<a href="data/mentions.csv.gz">数据集</a>。</span>`);
+      btn.insertAdjacentHTML('afterend', `<span class="sub">每本书只保留讨论最多的 ${comments.length} 条摘录（共 ${fmt(total)} 次提及）。</span>`);
     }
   };
   if (!comments.length) list.innerHTML = '<li class="sub">暂无评论摘录。</li>';
@@ -1109,6 +1199,8 @@ function needsFull(name, seg, query) {
       return !!(query.get('q') || '').trim();
     case 'foryou':
       return profile.views().length > 0;
+    case 'list':
+      return true;
     case 'topic':
       return state.topicByslug.has(seg[1]);
     default:
@@ -1144,6 +1236,7 @@ function route() {
       case 'rising': renderRising(query, restore); break;
       case 'trends': renderTrends(query, restore); break;
       case 'foryou': renderForYou(query, restore); break;
+      case 'list': renderList(restore); break;
       case 'topic': renderTopic(seg[1], query, restore); break;
       case 'book': renderBook(seg[1]); break;
       case 'search': renderSearch(query); break;
@@ -1240,6 +1333,22 @@ const typeSearch = debounce((q) => goSearch(q, true), 200);
 $('#q').addEventListener('input', (e) => typeSearch(e.target.value));
 // 搜索依赖全量索引：聚焦即预热（后台 1MB，用户输入时大概率已就绪）
 $('#q').addEventListener('focus', () => { ensureFull().catch(() => {}); }, { once: true });
+
+/* 书单收藏与分享图：全站事件委托（卡片按钮在 <a> 内，需拦截默认导航） */
+main.addEventListener('click', (e) => {
+  if (e.target.closest('#share-img-btn')) { showShareImage().catch(() => {}); return; }
+  const btn = e.target.closest('[data-wl]');
+  if (!btn) return;
+  e.preventDefault();
+  const id = btn.dataset.wl;
+  const on = wlToggle(id);
+  document.querySelectorAll(`[data-wl="${CSS.escape(id)}"]`).forEach((b) => {
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-label', on ? '移出书单' : '加入书单');
+    if (b.classList.contains('btn')) b.textContent = on ? '已在书单' : '想读';
+  });
+  if (!on && location.hash.startsWith('#/list')) btn.closest('.card')?.remove();
+});
 $('#search-form').addEventListener('submit', (e) => {
   e.preventDefault();
   goSearch($('#q').value, true);
