@@ -1,18 +1,18 @@
 // 黑客书架 Service Worker：静态资源与封面缓存优先，数据 JSON 网络优先，离线时回退缓存。
-const VERSION = 'hb-v9'; // v8: 版本化静态资源缓存优先 + 首屏数据 preload + 今日书架限量 120 本；v7: 字体子集全量重制
+const VERSION = 'hb-v11'; // v10: path 路由（History API），静态资源绝对路径 // v8: 版本化静态资源缓存优先 + 首屏数据 preload + 今日书架限量 120 本；v7: 字体子集全量重制
 const STATIC = [
-  './',
-  'index.html',
-  'app.js',
-  'app.css',
-  'fonts/fonts.css',
-  'manifest.webmanifest',
-  'icons/icon-192.png',
-  'icons/icon-512.png',
-  'icons/icon-maskable-512.png',
-  'icons/icon-180.png',
-  'assets/reward-qr.png',
-  'assets/wechat-qr.jpg',
+  '/',
+  '/index.html',
+  '/app.js?v=13',
+  '/app.css?v=16',
+  '/fonts/fonts.css?v=4fe36c0f',
+  '/manifest.webmanifest',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
+  '/icons/icon-180.png',
+  '/assets/reward-qr.png',
+  '/assets/wechat-qr.jpg',
 ];
 
 self.addEventListener('install', (e) => {
@@ -61,6 +61,6 @@ self.addEventListener('fetch', (e) => {
         caches.open(VERSION).then((cache) => cache.put(e.request, c));
       }
       return r;
-    }).catch(() => caches.match(e.request).then((hit) => hit || (e.request.mode === 'navigate' ? caches.match('./') : undefined)))
+    }).catch(() => caches.match(e.request).then((hit) => hit || (e.request.mode === 'navigate' ? caches.match('/') : undefined)))
   );
 });

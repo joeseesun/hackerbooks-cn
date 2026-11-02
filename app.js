@@ -32,17 +32,17 @@ const pageTitle = (b) => { const en = enName(b); return en ? `${T(b)}（${en}）
 const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const hashFor = (path, params = {}) => {
   const q = Object.entries(params).filter(([, v]) => v !== '' && v != null && v !== 0).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-  return `#${path}${q ? '?' + q : ''}`;
+  return `${path}${q ? '?' + q : ''}`;
 };
 
 /* ============================== 数据 ============================== */
 const URLS = {
-  meta: 'data/meta.json',
-  topics: 'data/topics.json',
-  books: 'data/books.json',
-  trends: 'data/trends.json',   // 惰性：仅 #/trends 加载
-  buy: 'data/buy.json',         // 惰性：仅书籍详情页加载（{book_id: ISBN-13}）
-  top: 'data/books-top.json',   // 首屏数据：全量索引的前 TOP_N 行
+  meta: '/data/meta.json',
+  topics: '/data/topics.json',
+  books: '/data/books.json',
+  trends: '/data/trends.json',   // 惰性：仅 #/trends 加载
+  buy: '/data/buy.json',         // 惰性：仅书籍详情页加载（{book_id: ISBN-13}）
+  top: '/data/books-top.json',   // 首屏数据：全量索引的前 TOP_N 行
 };
 const TOP_N = 600;
 const HOME_CAP = 120; // 今日书架每日限量：每天换一批，看全部去历史总榜
@@ -118,7 +118,7 @@ const bookCache = new Map();
 function getBook(id) {
   let p = bookCache.get(id);
   if (!p) {
-    p = getJSON(`data/book/${encodeURIComponent(id)}.json?v=${DATA_V}`);
+    p = getJSON(`/data/book/${encodeURIComponent(id)}.json?v=${DATA_V}`);
     bookCache.set(id, p);
     p.catch(() => { if (bookCache.get(id) === p) bookCache.delete(id); });
     if (bookCache.size > 60) bookCache.delete(bookCache.keys().next().value);
@@ -213,7 +213,7 @@ function search(query) {
 
 /* ============================== 封面与卡片 ============================== */
 // 一级：本站镜像封面；二级：Open Library；兜底：标题排版占位图。
-const coverUrl = (c) => `covers/${c}.webp`;
+const coverUrl = (c) => `/covers/${c}.webp`;
 const olCoverUrl = (c, large) => `https://covers.openlibrary.org/b/id/${c}-${large ? 'L' : 'M'}.jpg?default=false`;
 
 /** 生成的排版封面：颜色由标题哈希决定。 */
@@ -269,7 +269,7 @@ function cardHTML(b, eager = false) {
   const span = yearSpan(b);
   const badge = span ? `<span class="badge" title="提及年份 ${esc(span)}">${span}</span>` : '';
   const wl = `<button class="wl${wlHas(b.id) ? ' on' : ''}" data-wl="${esc(b.id)}" type="button" aria-label="加入书单">${WL_ICON}</button>`;
-  return `<a class="card" href="#/book/${encodeURIComponent(b.id)}">${coverHTML(b, false, badge, eager)}${wl}
+  return `<a class="card" href="/book/${encodeURIComponent(b.id)}">${coverHTML(b, false, badge, eager)}${wl}
   <h3>${esc(T(b))}</h3>${enName(b) ? `<p class="t-en">${esc(enName(b))}</p>` : ''}<p class="au">${esc((b.a || []).join(', '))}</p>
   ${recLine(b)}</a>`;
 }
@@ -383,7 +383,7 @@ function renderHome(q, restore) {
     items: () => homeOrder().slice(0, HOME_CAP),
     restore,
     full: false,
-    sub: `每天从 HN 提及的 ${fmt(m.n_books)} 本好书中换一批（今日 ${HOME_CAP} 本）。想看硬排名，去<a href="#/top">历史总榜</a>。`,
+    sub: `每天从 HN 提及的 ${fmt(m.n_books)} 本好书中换一批（今日 ${HOME_CAP} 本）。想看硬排名，去<a href="/top">历史总榜</a>。`,
   });
 }
 
@@ -403,7 +403,7 @@ function renderRecommended(q, restore) {
   setPage('最多推荐', '被最多不同 HN 评论者真心推荐（而不只是提及）的书。');
   const sub = '按「推荐过这本书的不同人数」排名（不是随便提一嘴）。推荐/提及标签由大语言模型逐条标注，与人工标注一致率约 85%，难免有噪声。';
   if (!hasStance()) {
-    main.innerHTML = `<div class="page-h"><h1>最多推荐</h1></div><p class="sub">${sub}</p><p class="empty">当前数据未包含推荐标签。请看<a href="#/top">历史总榜</a>。</p>`;
+    main.innerHTML = `<div class="page-h"><h1>最多推荐</h1></div><p class="sub">${sub}</p><p class="empty">当前数据未包含推荐标签。请看<a href="/top">历史总榜</a>。</p>`;
     return;
   }
   renderFeed({
@@ -449,7 +449,7 @@ function renderForYou(q, restore) {
   if (!views.length) {
     main.innerHTML = `<div class="empty"><h2>「为你推荐」还是空的</h2>
     <p>先去打开几本书，我们就会按同类话题推荐更多。所有记录只存在你的浏览器（localStorage）里，不会上传任何数据。</p>
-    <p><a class="btn primary" href="#/top">去逛历史总榜</a></p></div>`;
+    <p><a class="btn primary" href="/top">去逛历史总榜</a></p></div>`;
     return;
   }
   const clear = `<p><button class="btn" id="clear-profile" type="button">清空我的浏览记录</button></p>`;
@@ -486,7 +486,7 @@ function renderSearch(q) {
 
 function renderNotFound(msg = '这个页面不存在。') {
   setPage('未找到');
-  main.innerHTML = `<div class="empty"><h2>未找到</h2><p>${esc(msg)}</p><p><a class="btn primary" href="#/">回到首页</a></p></div>`;
+  main.innerHTML = `<div class="empty"><h2>未找到</h2><p>${esc(msg)}</p><p><a class="btn primary" href="/">回到首页</a></p></div>`;
 }
 
 function renderAbout() {
@@ -496,7 +496,7 @@ function renderAbout() {
   <h1>关于本站</h1>
   <p>「黑客书架」收录人们在 <a href="https://news.ycombinator.com" rel="noopener" target="_blank">Hacker News</a> 评论中提及的书，从 ${m.first_year} 到 ${m.last_year} 年。被提及不等于被推荐，所以本站还会告诉你每本书有多少人<b>真心推荐</b>。
   目前共收录 <b>${fmt(m.n_books)}</b> 本书、<b>${fmt(m.n_mentions)}</b> 次提及（来自 <b>${fmt(m.n_comments)}</b> 条评论、<b>${fmt(m.n_commenters)}</b> 位不同的评论者）。</p>
-  <p>可以去逛<a href="#/top">历史总榜</a>、看看<a href="#/rising">上升最快</a>，或从侧栏挑一个话题；打开任何一本书都能读到提到它的原评论并跳回 HN 原帖。</p>
+  <p>可以去逛<a href="/top">历史总榜</a>、看看<a href="/rising">上升最快</a>，或从侧栏挑一个话题；打开任何一本书都能读到提到它的原评论并跳回 HN 原帖。</p>
   <h2>数据是怎么来的</h2>
   <ol>
     <li><b>HN 全量数据。</b>从 Hacker News 公开档案出发，遍历全部条目与评论。</li>
@@ -507,7 +507,7 @@ function renderAbout() {
   </ol>
   <p>分数更看重「多少位<i>不同的人</i>提到过」，而不是原始提及次数，所以一个人刷屏不会霸榜。「上升最快」比较的是近期提及与该书历史份额的变化。</p>
   <h2>「推荐」与「提及」的区别</h2>
-  <p>只数提及会让一本被讨论（甚至被警告）的书看起来像人气好书。因此每条提及都被模型标注为 <i>推荐</i>、<i>中性</i>、<i>批评</i> 或 <i>与书无关</i>。「推荐人数」统计至少推荐过一次的不同的人；与书无关的提及会被剔除。<a href="#/recommended">最多推荐</a>页按推荐人数排名。标注与更仔细的参考模型一致率约 85%，会有噪声。</p>
+  <p>只数提及会让一本被讨论（甚至被警告）的书看起来像人气好书。因此每条提及都被模型标注为 <i>推荐</i>、<i>中性</i>、<i>批评</i> 或 <i>与书无关</i>。「推荐人数」统计至少推荐过一次的不同的人；与书无关的提及会被剔除。<a href="/recommended">最多推荐</a>页按推荐人数排名。标注与更仔细的参考模型一致率约 85%，会有噪声。</p>
   <h2>来源与致谢</h2>
   <p>本站是 <a href="https://hackerbooks.org" rel="noopener" target="_blank">hackerbooks.org</a> 的中文版。原站由 <a href="https://rohitshinde.in" rel="author" target="_blank" rel="noopener">roansh</a> 构建，感谢其公开的数据管道（完整数据集可在原站获取）。书籍元数据与封面来自 <a href="https://openlibrary.org" rel="noopener" target="_blank">Open Library</a>；评论文字版权归原作者所有，页面上只保留摘录并链接回原帖。</p>
   <p>灵感来自 Andrej Karpathy 的 <a href="https://hackertube.org" rel="noopener" target="_blank">HackerTube</a>。中文版由 <a href="https://tuijian.qiaomu.ai/" target="_blank" rel="noopener">乔木</a> 维护，代码在 <a href="https://github.com/joeseesun/hackerbooks-cn" rel="noopener" target="_blank">GitHub</a> 开源。</p>
@@ -575,9 +575,9 @@ function bookHTML(b, d) {
     if (ys.length) { full.f = Math.min(...ys); full.l = Math.max(...ys); }
   }
   const authors = (full.a || []).map((a) => `<a href="${hashFor('/search', { q: a })}">${esc(a)}</a>`).join(', ');
-  const topics = (full.tp || []).map((s) => `<a class="chip topic" href="#/topic/${encodeURIComponent(s)}">${esc(state.topicByslug.get(s)?.name || s)}</a>`).join('');
+  const topics = (full.tp || []).map((s) => `<a class="chip topic" href="/topic/${encodeURIComponent(s)}">${esc(state.topicByslug.get(s)?.name || s)}</a>`).join('');
   const span = yearSpan(full);
-  const trendLink = (state.trends ? !!state.trends.books[full.id] : full.u >= 60) ? `<a class="btn" href="#/trends?b=${encodeURIComponent(full.id)}">看它的热度走势</a>` : '';
+  const trendLink = (state.trends ? !!state.trends.books[full.id] : full.u >= 60) ? `<a class="btn" href="/trends?b=${encodeURIComponent(full.id)}">看它的热度走势</a>` : '';
 /** 简介：有中文译文的先中文，英文原文折叠收纳。 */
 const descHTML = (full) => {
   if (full.dz && full.desc) return `<p class="desc">${esc(full.dz)}</p><details class="orig"><summary>查看英文原文</summary><p class="desc">${esc(full.desc)}</p></details>`;
@@ -691,7 +691,7 @@ function renderList(restore) {
   const ids = wlGet();
   setPage('我的书单', '存在本机浏览器里，不会上传。');
   if (!ids.length) {
-    main.innerHTML = `<div class="page-h"><h1>我的书单</h1></div><p class="sub">在书卡右上角或详情页点「想读」，把书收进这里。只存在本机浏览器。</p><p class="empty">书单还是空的，去<a href="#/">今日书架</a>淘几本。</p>`;
+    main.innerHTML = `<div class="page-h"><h1>我的书单</h1></div><p class="sub">在书卡右上角或详情页点「想读」，把书收进这里。只存在本机浏览器。</p><p class="empty">书单还是空的，去<a href="/">今日书架</a>淘几本。</p>`;
     return;
   }
   main.innerHTML = `<div class="page-h"><h1>我的书单</h1></div><p class="sub">${fmt(ids.length)} 本 · 只存在本机。 <button class="btn" id="wl-copy" type="button">复制书单</button> <button class="btn" id="wl-clear" type="button">清空书单</button></p><div class="grid" id="grid"></div>`;
@@ -706,7 +706,7 @@ function renderList(restore) {
 const BOOK_REDIRECTS = { OL999456W: 'OL1975712W', OL28649132W: 'OL82563W', OL27739326W: 'OL21385222W' };
 async function renderBook(id) {
   if (BOOK_REDIRECTS[id]) {
-    history.replaceState(null, '', `#/book/${BOOK_REDIRECTS[id]}`);
+    history.replaceState(null, '', `/book/${BOOK_REDIRECTS[id]}`);
     id = BOOK_REDIRECTS[id];
   }
   const token = ++routeToken;
@@ -818,7 +818,7 @@ function waveCaption(w) {
 }
 
 function trendCardHTML(T, b, caption, peakI, sr) {
-  return `<a class="card tr-card" href="#/book/${encodeURIComponent(b.id)}">${coverHTML(b)}
+  return `<a class="card tr-card" href="/book/${encodeURIComponent(b.id)}">${coverHTML(b)}
   <h3>${esc(trTitle(b))}</h3>${enName(b) ? `<p class="t-en">${esc(enName(b))}</p>` : ''}<p class="au">${esc((b.a || []).join(', '))}</p>
   ${sparkHTML(T, T.books[b.id].p, peakI)}<p class="rec">${esc(caption)}</p><span class="sr-only">${esc(sr)}</span></a>`;
 }
@@ -919,7 +919,7 @@ function mountBump(box, T, ctl) {
     const ax = g.x(p.i) < g.L + 40 ? 'start' : g.x(p.i) > g.W - g.R - 40 ? 'end' : 'middle';
     s.querySelector('.over').innerHTML = g.marks(id, 'hl') + `<text class="tl hl-t" x="${g.x(p.i).toFixed(1)}" y="${g.y(p.r) - 14}" text-anchor="${ax}">${trSvg(trShort(b, 30))}</text>` + `<circle class="cur" cx="${g.x(p.i).toFixed(1)}" cy="${g.y(p.r)}" r="9"/>`;
     tip.innerHTML = `<b>${ys[p.i]} 年第 ${p.r} 名${ys[p.i] === ly ? '（进行中）' : ''}</b> · ${fmt(p.u)} 位评论者<br><span>${esc(trTitle(b))}</span>` +
-      (pin ? `<br><a href="#/book/${encodeURIComponent(id)}">打开书籍页 →</a>` : '');
+      (pin ? `<br><a href="/book/${encodeURIComponent(id)}">打开书籍页 →</a>` : '');
     tip.hidden = false;
     tip.dataset.k = k;
     const dot = s.querySelector('.cur').getBoundingClientRect();
@@ -969,7 +969,7 @@ function mountBump(box, T, ctl) {
   sc.addEventListener('keydown', (e) => {
     const id = e.target.closest?.('.bk')?.dataset.id;
     if (!id) return;
-    if (e.key === 'Enter') { e.preventDefault(); go(`#/book/${encodeURIComponent(id)}`); return; }
+    if (e.key === 'Enter') { e.preventDefault(); go(`/book/${encodeURIComponent(id)}`); return; }
     const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!d) return;
     e.preventDefault();
@@ -1013,8 +1013,8 @@ function mountCompare(host, T, ids0, ctl) {
 
   let touched = false;
   function sync() {
-    if (touched) history.replaceState(null, '', '#/trends?b=' + sel.map((s) => s.id).join(','));
-    legend.innerHTML = sel.map((s) => `<li style="--c:var(--tr-${s.slot})"><i class="sw"></i><a href="#/book/${encodeURIComponent(s.id)}">${esc(trTitle(bk(s.id)))}</a>
+    if (touched) history.replaceState(null, '', '/trends?b=' + sel.map((s) => s.id).join(','));
+    legend.innerHTML = sel.map((s) => `<li style="--c:var(--tr-${s.slot})"><i class="sw"></i><a href="/book/${encodeURIComponent(s.id)}">${esc(trTitle(bk(s.id)))}</a>
     <button type="button" class="x" data-id="${esc(s.id)}" aria-label="把《${esc(trTitle(bk(s.id)))}》移出对比">×</button></li>`).join('');
     const full = sel.length >= TR_MAX;
     input.disabled = full;
@@ -1174,7 +1174,7 @@ let navCount = 0, freshNav = false;
 history.scrollRestoration = 'manual';
 
 function parseHash() {
-  const raw = location.hash.slice(1) || '/';
+  const raw = location.pathname + location.search;
   const i = raw.indexOf('?');
   return { raw, path: i < 0 ? raw : raw.slice(0, i), query: new URLSearchParams(i < 0 ? '' : raw.slice(i + 1)) };
 }
@@ -1260,13 +1260,13 @@ function route() {
   } else render();
 }
 
-const go = (hash) => { freshNav = true; location.hash = hash; };
+const go = (path) => { if (location.pathname + location.search === path) return; freshNav = true; history.pushState({}, '', path); route(); };
 
 // 区分「点击链接的前进导航」（回到顶部）与「前进/后退」（恢复位置）。
 document.addEventListener('click', (e) => {
   const a = e.target.closest?.('a[href^="#/"]');
   if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
-  if (a.getAttribute('href') === (location.hash || '#/')) {
+  if (a.getAttribute('href') === (location.pathname + location.search || '/')) {
     e.preventDefault();
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
@@ -1280,7 +1280,7 @@ document.addEventListener('click', (e) => {
   }
   freshNav = true;
 });
-window.addEventListener('hashchange', route);
+window.addEventListener('popstate', route);
 
 /* ============================== 界面框架 ============================== */
 const isMobile = () => window.matchMedia('(max-width: 899px)').matches;
@@ -1323,10 +1323,11 @@ function goSearch(q, replace) {
   q = q.trim();
   if (!q) return;
   const target = hashFor('/search', { q });
-  if (location.hash === target) return;
+  if (location.pathname + location.search === target) return;
   if (replace && parseHash().path === '/search') {
     freshNav = true;
-    location.replace(target);
+    history.replaceState({}, '', target);
+    route();
   } else go(target);
 }
 const typeSearch = debounce((q) => goSearch(q, true), 200);
@@ -1347,7 +1348,7 @@ main.addEventListener('click', (e) => {
     b.setAttribute('aria-label', on ? '移出书单' : '加入书单');
     if (b.classList.contains('btn')) b.textContent = on ? '已在书单' : '想读';
   });
-  if (!on && location.hash.startsWith('#/list')) btn.closest('.card')?.remove();
+  if (!on && location.pathname === '/list') btn.closest('.card')?.remove();
 });
 $('#search-form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -1357,7 +1358,7 @@ $('#search-form').addEventListener('submit', (e) => {
 
 function renderSidebarTopics() {
   $('#nav-topics').innerHTML = state.topics.map((t) =>
-    `<li><a href="#/topic/${encodeURIComponent(t.slug)}" data-slug="${esc(t.slug)}"><span>${esc(t.name)}</span><span class="count">${fmt(t.n)}</span></a></li>`).join('');
+    `<li><a href="/topic/${encodeURIComponent(t.slug)}" data-slug="${esc(t.slug)}"><span>${esc(t.name)}</span><span class="count">${fmt(t.n)}</span></a></li>`).join('');
 }
 
 /* ============================== 快捷键 ============================== */
@@ -1387,7 +1388,7 @@ document.addEventListener('keydown', (e) => {
     if (document.body.classList.contains('drawer-open')) { closeDrawer(); return; }
     if (parseHash().path.startsWith('/book/')) {
       if (navCount > 1) history.back();
-      else go('#/');
+      else go('/');
     }
     return;
   }
@@ -1395,7 +1396,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key;
   if (gAt && Date.now() - gAt < 1000) {
     gAt = 0;
-    const dest = { h: '#/', t: '#/top', m: '#/recommended', r: '#/rising', f: '#/foryou', a: '#/about' }[k];
+    const dest = { h: '/', t: '/top', m: '/recommended', r: '/rising', f: '/foryou', a: '/about' }[k];
     if (dest) { e.preventDefault(); go(dest); return; }
   }
   if (k === '/') { e.preventDefault(); $('#q').focus(); $('#q').select(); }
@@ -1412,7 +1413,7 @@ if (!navigator.connection?.saveData) {
   const arm = (e) => {
     const a = e.target.closest?.('a.card');
     if (!a) return;
-    const id = decodeURIComponent((a.getAttribute('href') || '').slice('#/book/'.length));
+    const id = decodeURIComponent((a.getAttribute('href') || '').slice('/book/'.length));
     if (!id || bookCache.has(id)) return;
     clearTimeout(timer);
     timer = setTimeout(() => getBook(id).catch(() => {}), 80);
@@ -1440,6 +1441,16 @@ if (!navigator.connection?.saveData) {
   if (!hasStance()) $('#nav-main [data-route="recommended"]').parentElement.hidden = true;
   const m = state.meta;
   $('#footer-meta').textContent = `收录 ${fmt(m.n_books)} 本书 · ${fmt(m.n_mentions)} 次提及 · ${m.first_year}–${m.last_year} · 数据生成于 ${m.generated} · 中文版持续同步 hackerbooks.org`;
+  // 旧书签（#/book/...）无缝转到路径 URL
+  if (location.hash.startsWith('#/')) history.replaceState(null, '', location.hash.slice(1));
+  // 内部路径链接全部走 pushState，不整页刷新
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest('a[href^="/"]');
+    if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+    e.preventDefault();
+    go(a.getAttribute('href'));
+  });
   route();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();

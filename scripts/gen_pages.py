@@ -135,7 +135,7 @@ blockquote cite {{ font-size: 13px; color: #767676; font-style: normal; }}
 <a class="btn" href="https://search.jd.com/Search?keyword={buy_q.replace(' ', '+')}&enc=utf-8" rel="nofollow noopener" target="_blank">京东</a>
 <a class="btn" href="https://openlibrary.org/works/{esc(bid)}" rel="nofollow noopener" target="_blank">Open Library</a>
 {isbn_link}</p>
-<p class="openapp"><a class="btn primary" href="/#/book/{esc(bid)}">在黑客书架打开完整页面 →</a></p>
+<p class="openapp"><a class="btn primary" href="/book/{esc(bid)}">在黑客书架打开完整页面 →</a></p>
 <p class="sub">数据整理自 Hacker News 公开评论，数据来源 <a href="https://hackerbooks.org" rel="nofollow noopener" target="_blank">hackerbooks.org</a> 与 Open Library。</p>
 </article>
 </main>
