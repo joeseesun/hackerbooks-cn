@@ -1,10 +1,10 @@
 // 黑客书架 Service Worker：静态资源与封面缓存优先，数据 JSON 网络优先，离线时回退缓存。
-const VERSION = 'hb-v11'; // v10: path 路由（History API），静态资源绝对路径 // v8: 版本化静态资源缓存优先 + 首屏数据 preload + 今日书架限量 120 本；v7: 字体子集全量重制
+const VERSION = 'hb-v12'; // v12: 书架（想读/读过/评分）+ 推荐算法升级 + 回到顶部 // v10: path 路由（History API），静态资源绝对路径 // v8: 版本化静态资源缓存优先 + 首屏数据 preload + 今日书架限量 120 本；v7: 字体子集全量重制
 const STATIC = [
   '/',
   '/index.html',
-  '/app.js?v=13',
-  '/app.css?v=16',
+  '/app.js?v=14',
+  '/app.css?v=17',
   '/fonts/fonts.css?v=4fe36c0f',
   '/manifest.webmanifest',
   '/icons/icon-192.png',

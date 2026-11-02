@@ -335,3 +335,24 @@ dialog img { display: block; margin: 14px auto; background: #fff; }
 .buy-row .btn:hover, .links .btn:not(.primary):hover { background: none; text-decoration-color: currentColor; }
 .buy-row .btn[target="_blank"]::after, .links .btn[target="_blank"]:not(.primary)::after { content: " ↗"; }
 .buy-row { gap: 6px 22px; }
+
+/* ---- 我的书架 ---- */
+.shelf-row { display: flex; align-items: center; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+.shelf-lbl { color: var(--muted); font-size: 13.5px; }
+.seg { padding: 7px 16px; border: 1px solid var(--border); background: var(--bg); color: var(--text-2); font: 500 14px var(--sans); cursor: pointer; transition: all 160ms var(--ease); }
+.seg:hover { color: var(--text); }
+.seg.on { background: var(--text); border-color: var(--text); color: var(--bg); }
+.stars { display: inline-flex; gap: 2px; margin-left: 4px; }
+.star { width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--border); cursor: pointer; transition: color 120ms var(--ease); }
+.star svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.stars.on .star { color: var(--muted); }
+.stars.on .star:hover, .stars.on .star.on { color: var(--text); }
+.stars.on .star.on svg { fill: currentColor; }
+.stars:not(.on) .star { opacity: 0.45; cursor: default; }
+.wl.read { color: var(--text); border-color: var(--text); }
+.shelf-tabs { margin: 14px 0 4px; }
+/* 回到顶部 */
+.totop { position: fixed; z-index: 40; right: 22px; bottom: 26px; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; opacity: 0; pointer-events: none; transform: translateY(8px); transition: all 200ms var(--ease); }
+.totop.show { opacity: 1; pointer-events: auto; transform: none; }
+.totop:hover { background: var(--surface-2); }
+.totop svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

@@ -169,6 +169,35 @@ const profile = {
 function forYouList() {
   const viewed = new Set(profile.views());
   const aff = profile.aff();
+  const affMax = Math.max(1, ...Object.values(aff));
+  // 种子：想读 ×3 > 评分过的读过 ×(1+分数) > 读过 ×1.5 > 浏览过 ×1
+  const seeds = new Map();
+  for (const [id, v] of Object.entries(shelfGet())) {
+    if (v.s === 'wish') seeds.set(id, 3);
+    else if (v.s === 'read') seeds.set(id, v.r ? 1 + v.r : 1.5);
+  }
+  for (const id of viewed) if (!seeds.has(id)) seeds.set(id, 1);
+  const seen = new Set([...seeds.keys()]);
+  const scored = new Map();
+  // 主信号：共提图（同一讨论被一起提到的书）
+  const co = state.coIndex || {};
+  for (const [seed, w] of seeds) {
+    for (const nid of co[seed] || []) {
+      if (seen.has(nid)) continue;
+      scored.set(nid, (scored.get(nid) || 0) + w * 4);
+    }
+  }
+  // 兜底/混合：话题亲和
+  for (const b of state.books) {
+    if (seen.has(b.id)) continue;
+    const base = (b.tp || []).reduce((s2, t) => s2 + (aff[t] || 0), 0);
+    if (base > 0) scored.set(b.id, (scored.get(b.id) || 0) + (base / affMax) * 2);
+  }
+  return [...scored].sort((x, y) => y[1] - x[1]).slice(0, 60).map(([id]) => state.byId.get(id)).filter(Boolean);
+}
+function forYouListOld() {
+  const viewed = new Set(profile.views());
+  const aff = profile.aff();
   const scored = [];
   for (const b of state.books) {
     if (viewed.has(b.id)) continue;
@@ -253,22 +282,37 @@ function recLine(b) {
   return `<p class="rec rec-st" title="${tip}"><span class="rl">推荐 <b>${fmt(b.ru)}</b> · 提及 <b>${fmt(b.u)}</b></span><span class="rs"><b>${fmt(b.ru)}</b> 推荐 · ${fmt(b.u)}</span></p>`;
 }
 
-/* ------- 书单（只存本机 localStorage） ------- */
+/* ------- 我的书架（想读/读过/评分，只存本机 localStorage） ------- */
 const WL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-const wlGet = () => store.get('wl', []);
-const wlHas = (id) => wlGet().includes(id);
-function wlToggle(id) {
-  const list = wlGet();
-  const i = list.indexOf(id);
-  if (i >= 0) list.splice(i, 1); else list.unshift(id);
-  store.set('wl', list);
-  return i < 0;
+const READ_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+const STAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.5 3.6 14 8.7l5.6.8-4 4 .9 5.6-5-2.7-5 2.7.9-5.6-4-4 5.6-.8z"/></svg>';
+const shelfGet = () => store.get('shelf', {});
+const shelfOf = (id) => shelfGet()[id] || null;
+function shelfSet(id, patch) {
+  const shelf = shelfGet();
+  if (!patch) delete shelf[id];
+  else shelf[id] = { ...(shelf[id] || {}), ...patch };
+  store.set('shelf', shelf);
 }
+// 旧书单（wl 数组）一次性迁移为书架·想读
+if (store.get('wl', null) && !store.get('shelf', null)) {
+  store.set('shelf', Object.fromEntries(store.get('wl', []).map((id) => [id, { s: 'wish' }])));
+  store.remove('wl');
+}
+const shelfIds = (s) => Object.entries(shelfGet()).filter(([, v]) => v.s === s).map(([id]) => id);
+const wlHas = (id) => shelfOf(id)?.s === 'wish';   // 卡片角标：想读
+const wlToggle = (id) => {                          // 卡片角标：想读开/关
+  const cur = shelfOf(id);
+  const toWish = cur?.s !== 'wish';
+  shelfSet(id, toWish ? { s: 'wish' } : null);
+  return toWish;
+};
 
 function cardHTML(b, eager = false) {
   const span = yearSpan(b);
   const badge = span ? `<span class="badge" title="提及年份 ${esc(span)}">${span}</span>` : '';
-  const wl = `<button class="wl${wlHas(b.id) ? ' on' : ''}" data-wl="${esc(b.id)}" type="button" aria-label="加入书单">${WL_ICON}</button>`;
+  const st = shelfOf(b.id);
+  const wl = `<button class="wl${st?.s === 'wish' ? ' on' : st?.s === 'read' ? ' read' : ''}" data-wl="${esc(b.id)}" type="button" aria-label="${st ? '修改书架标记' : '加入书架'}">${st?.s === 'read' ? READ_ICON : WL_ICON}</button>`;
   return `<a class="card" href="/book/${encodeURIComponent(b.id)}">${coverHTML(b, false, badge, eager)}${wl}
   <h3>${esc(T(b))}</h3>${enName(b) ? `<p class="t-en">${esc(enName(b))}</p>` : ''}<p class="au">${esc((b.a || []).join(', '))}</p>
   ${recLine(b)}</a>`;
@@ -443,10 +487,12 @@ function renderTopic(slug, q, restore) {
   });
 }
 
+const ensureCoIndex = () => (state.coIndexP ??= getJSON('/data/co-index.json').then((m) => { state.coIndex = m; }).catch(() => { state.coIndex = {}; }));
 function renderForYou(q, restore) {
-  setPage('为你推荐', '根据你的浏览记录在本地计算的个性化推荐。');
+  setPage('为你推荐', '根据你的书架标记与浏览记录在本地计算的个性化推荐。');
   const views = profile.views();
-  if (!views.length) {
+  const marks = Object.keys(shelfGet()).length;
+  if (!views.length && !marks) {
     main.innerHTML = `<div class="empty"><h2>「为你推荐」还是空的</h2>
     <p>先去打开几本书，我们就会按同类话题推荐更多。所有记录只存在你的浏览器（localStorage）里，不会上传任何数据。</p>
     <p><a class="btn primary" href="/top">去逛历史总榜</a></p></div>`;
@@ -460,10 +506,11 @@ function renderForYou(q, restore) {
     query: q,
     restore,
     items: () => picks,
-    sub: `根据你打开过的 ${fmt(views.length)} 本书推荐（已去掉看过的）。只保存在这台设备上。`,
+    sub: `根据你标记的 ${fmt(marks)} 本书和打开过的 ${fmt(views.length)} 本推荐（已去掉看过的）。只保存在这台设备上。`,
     pre: clear,
   });
   $('#clear-profile').onclick = () => { profile.clear(); route(); };
+  if (!state.coIndex) ensureCoIndex().then(() => { if (parseHash().path === '/foryou') route(); });
 }
 
 function renderSearch(q) {
@@ -570,6 +617,7 @@ const SV_TAG = { r: ['推荐', 'recommends'], n: ['提及', 'mentions'], c: ['�
 
 function bookHTML(b, d) {
   const full = { ...b, ...(d || {}) };
+  const st = shelfOf(full.id);
   if (!full.f && d?.years) {
     const ys = Object.keys(d.years).map(Number);
     if (ys.length) { full.f = Math.min(...ys); full.l = Math.max(...ys); }
@@ -602,7 +650,12 @@ const isbnLink = d?.isbn ? `<a class="btn" href="https://openlibrary.org/isbn/${
     <div class="chips">${topics}</div>
     ${descHTML(full)}
     <div id="buy">${buyHTML({ ...full, isbn: d?.isbn })}</div>
-    <div class="links"><a class="btn primary" href="https://openlibrary.org/works/${esc(full.id)}" target="_blank" rel="noopener">在 Open Library 查看</a>${isbnLink}<button class="btn" type="button" data-wl="${esc(full.id)}">${wlHas(full.id) ? '已在书单' : '想读'}</button><button class="btn" type="button" id="share-img-btn">生成分享图</button>${trendLink}</div>
+    <div class="shelf-row"><span class="shelf-lbl">我的标记</span>
+      <button class="seg${st?.s === 'wish' ? ' on' : ''}" type="button" data-shelf="wish" data-id="${esc(full.id)}">想读</button>
+      <button class="seg${st?.s === 'read' ? ' on' : ''}" type="button" data-shelf="read" data-id="${esc(full.id)}">读过</button>
+      <span class="stars${st?.s === 'read' ? ' on' : ''}" data-id="${esc(full.id)}" aria-label="评分（先标记读过）">${[1, 2, 3, 4, 5].map((n) => `<button class="star${(st?.r || 0) >= n ? ' on' : ''}" type="button" data-star="${n}" aria-label="${n} 星">${STAR_ICON}</button>`).join('')}</span>
+    </div>
+    <div class="links"><a class="btn primary" href="https://openlibrary.org/works/${esc(full.id)}" target="_blank" rel="noopener">在 Open Library 查看</a>${isbnLink}<button class="btn" type="button" id="share-img-btn">生成分享图</button><a class="btn" href="https://www.goodreads.com/search?q=${encodeURIComponent([enName(full) || full.t, (full.a || [])[0]].filter(Boolean).join(' '))}" target="_blank" rel="noopener">Goodreads 书评</a>${trendLink}</div>
   </div>
   ${d?.years ? `<section class="sec"><h2>历年提及次数</h2>${yearsChart(d.years, state.meta)}</section>` : ''}
   ${d ? `<section class="sec" id="comments-sec"><h2>Hacker News 上怎么说</h2><ul class="comments" id="comments"></ul><p><button class="btn" id="more-comments" type="button" hidden>显示更多评论</button></p></section>` : '<section class="sec"><p class="sub">评论加载中…</p></section>'}
@@ -687,21 +740,34 @@ async function showShareImage() {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }, 'image/png');
 }
-function renderList(restore) {
-  const ids = wlGet();
-  setPage('我的书单', '存在本机浏览器里，不会上传。');
-  if (!ids.length) {
-    main.innerHTML = `<div class="page-h"><h1>我的书单</h1></div><p class="sub">在书卡右上角或详情页点「想读」，把书收进这里。只存在本机浏览器。</p><p class="empty">书单还是空的，去<a href="/">今日书架</a>淘几本。</p>`;
+function renderShelf(restore, query) {
+  const f = query.get('f') === 'wish' || query.get('f') === 'read' ? query.get('f') : 'all';
+  const all = Object.entries(shelfGet());
+  const rows = all.filter(([, v]) => f === 'all' || v.s === f);
+  setPage('我的书架', '想读、读过和评分，只存在本机浏览器里。');
+  const tab = (label, key, n) => `<a class="chip${f === key ? ' on' : ''}" href="/list${key === 'all' ? '' : '?f=' + key}">${label} ${fmt(n)}</a>`;
+  const sub = `<div class="chips shelf-tabs">${tab('全部', 'all', all.length)}${tab('想读', 'wish', shelfIds('wish').length)}${tab('读过', 'read', shelfIds('read').length)}</div><p class="sub"><button class="btn" id="shelf-copy" type="button">复制书单</button></p>`;
+  if (!rows.length) {
+    main.innerHTML = `<div class="page-h"><h1>我的书架</h1></div>${sub}<p class="empty">${f === 'all' ? '书架还是空的：在书卡右上角或详情页标记「想读 / 读过」。' : '这个分类下还没有书。'}</p>`;
+    wireShelfCopy(rows);
     return;
   }
-  main.innerHTML = `<div class="page-h"><h1>我的书单</h1></div><p class="sub">${fmt(ids.length)} 本 · 只存在本机。 <button class="btn" id="wl-copy" type="button">复制书单</button> <button class="btn" id="wl-clear" type="button">清空书单</button></p><div class="grid" id="grid"></div>`;
-  const books = ids.map((id) => state.byId.get(id)).filter(Boolean);
+  main.innerHTML = `<div class="page-h"><h1>我的书架</h1></div>${sub}<div class="grid" id="grid"></div>`;
+  const books = rows.map(([id]) => state.byId.get(id)).filter(Boolean);
   current = mountInfinite($('#grid'), books, restore?.shown || 0);
-  $('#wl-copy').onclick = async () => {
-    const text = '黑客书架 · 我的书单\n' + books.map((b, i) => `${i + 1}. ${T(b)}（${enName(b) || b.t}）`).join('\n') + '\n' + location.origin;
-    try { await navigator.clipboard.writeText(text); $('#wl-copy').textContent = '已复制 ✓'; } catch { $('#wl-copy').textContent = '复制失败，请手动选择'; }
+  wireShelfCopy(books);
+}
+function wireShelfCopy(books) {
+  const btn = $('#shelf-copy');
+  if (!btn) return;
+  btn.onclick = async () => {
+    const text = '黑客书架 · 我的书架\n' + books.map((b, i) => {
+      const v = shelfOf(b.id);
+      const tag = v?.s === 'read' ? `读过${v.r ? ' ★' + v.r : ''}` : '想读';
+      return `${i + 1}. ${T(b)}（${enName(b) || b.t}）[${tag}]`;
+    }).join('\n') + '\n' + location.origin;
+    try { await navigator.clipboard.writeText(text); btn.textContent = '已复制 ✓'; } catch { btn.textContent = '复制失败'; }
   };
-  $('#wl-clear').onclick = () => { store.set('wl', []); route(); };
 }
 const BOOK_REDIRECTS = { OL999456W: 'OL1975712W', OL28649132W: 'OL82563W', OL27739326W: 'OL21385222W' };
 async function renderBook(id) {
@@ -1236,7 +1302,7 @@ function route() {
       case 'rising': renderRising(query, restore); break;
       case 'trends': renderTrends(query, restore); break;
       case 'foryou': renderForYou(query, restore); break;
-      case 'list': renderList(restore); break;
+      case 'list': renderShelf(restore, query); break;
       case 'topic': renderTopic(seg[1], query, restore); break;
       case 'book': renderBook(seg[1]); break;
       case 'search': renderSearch(query); break;
@@ -1335,20 +1401,49 @@ $('#q').addEventListener('input', (e) => typeSearch(e.target.value));
 // 搜索依赖全量索引：聚焦即预热（后台 1MB，用户输入时大概率已就绪）
 $('#q').addEventListener('focus', () => { ensureFull().catch(() => {}); }, { once: true });
 
-/* 书单收藏与分享图：全站事件委托（卡片按钮在 <a> 内，需拦截默认导航） */
+/* 书架标记与分享图：全站事件委托（卡片按钮在 <a> 内，需拦截默认导航） */
+function syncShelfUI(id) {
+  const st = shelfOf(id);
+  document.querySelectorAll(`[data-shelf][data-id="${CSS.escape(id)}"]`).forEach((b) => b.classList.toggle('on', st?.s === b.dataset.shelf));
+  document.querySelectorAll(`.stars[data-id="${CSS.escape(id)}"]`).forEach((box) => {
+    box.classList.toggle('on', st?.s === 'read');
+    box.querySelectorAll('.star').forEach((sb) => sb.classList.toggle('on', (st?.r || 0) >= +sb.dataset.star));
+  });
+  document.querySelectorAll(`[data-wl="${CSS.escape(id)}"]`).forEach((b) => {
+    b.classList.toggle('on', st?.s === 'wish');
+    b.classList.toggle('read', st?.s === 'read');
+    b.innerHTML = st?.s === 'read' ? READ_ICON : WL_ICON;
+  });
+}
 main.addEventListener('click', (e) => {
   if (e.target.closest('#share-img-btn')) { showShareImage().catch(() => {}); return; }
-  const btn = e.target.closest('[data-wl]');
-  if (!btn) return;
+  const seg = e.target.closest('[data-shelf]');
+  if (seg) {
+    e.preventDefault();
+    const id = seg.dataset.id, mark = seg.dataset.shelf;
+    const cur = shelfOf(id);
+    if (cur?.s === mark) shelfSet(id, null);
+    else shelfSet(id, { s: mark, ...(mark === 'read' && cur?.r ? { r: cur.r } : {}) });
+    syncShelfUI(id);
+    if (!shelfOf(id) && location.pathname === '/list') seg.closest('.card')?.remove();
+    return;
+  }
+  const star = e.target.closest('[data-star]');
+  if (star) {
+    e.preventDefault();
+    const box = star.closest('.stars'), id = box.dataset.id, r = +star.dataset.star;
+    const cur = shelfOf(id);
+    shelfSet(id, { s: 'read', ...(cur?.r === r ? {} : { r }) });
+    syncShelfUI(id);
+    return;
+  }
+  const wlBtn = e.target.closest('[data-wl]');
+  if (!wlBtn) return;
   e.preventDefault();
-  const id = btn.dataset.wl;
-  const on = wlToggle(id);
-  document.querySelectorAll(`[data-wl="${CSS.escape(id)}"]`).forEach((b) => {
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-label', on ? '移出书单' : '加入书单');
-    if (b.classList.contains('btn')) b.textContent = on ? '已在书单' : '想读';
-  });
-  if (!on && location.pathname === '/list') btn.closest('.card')?.remove();
+  const id = wlBtn.dataset.wl;
+  wlToggle(id);
+  syncShelfUI(id);
+  if (!wlHas(id) && location.pathname === '/list') wlBtn.closest('.card')?.remove();
 });
 $('#search-form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -1453,4 +1548,13 @@ if (!navigator.connection?.saveData) {
   });
   route();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // 回到顶部（长榜单）
+  const totop = document.createElement('button');
+  totop.className = 'totop';
+  totop.type = 'button';
+  totop.setAttribute('aria-label', '回到顶部');
+  totop.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+  document.body.appendChild(totop);
+  totop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  window.addEventListener('scroll', () => totop.classList.toggle('show', window.scrollY > 1200), { passive: true });
 })();
