@@ -56,7 +56,7 @@ const DATA_V = 5; // 详情 JSON 缓存版本：数据更新时 +1（绕过浏�
 const state = {
   meta: null, topics: [], topicByslug: new Map(),
   books: [], byId: new Map(), full: false,
-  searchIdx: null, trends: null, buy: null, pyIndex: null, coIndex: null,
+  searchIdx: null, trends: null, buy: null, pyIndex: null, coIndex: null, authorMap: null,
   cache: {},
 };
 
@@ -282,10 +282,13 @@ const yearSpan = (b) => (b.f && b.l ? (b.f === b.l ? `${b.f}` : `${b.f}–${b.l}
 
 /** 卡片下方的计数行：有推荐标签时显示「推荐 / 提及」双数字，否则只显示提及人数。 */
 function recLine(b) {
-  if (!b.ru) return `<p class="rec">${fmt(b.u)} 人提及</p>`;
-  const tip = `${fmt(b.ru)} 人推荐 · ${fmt(b.u)} 人提及`;
-  return `<p class="rec rec-st" title="${tip}"><span class="rl">推荐 <b>${fmt(b.ru)}</b> · 提及 <b>${fmt(b.u)}</b></span><span class="rs"><b>${fmt(b.ru)}</b> 推荐 · ${fmt(b.u)}</span></p>`;
+  const qv = b.q != null ? `<span class="qv" title="值得读指数（0–100）">${b.q}</span>` : '';
+  if (!b.ru) return `<p class="rec">${qv}${fmt(b.u)} 人提及</p>`;
+  const tip = `${b.q != null ? `值得读指数 ${b.q} · ` : ''}${fmt(b.ru)} 人推荐 · ${fmt(b.u)} 人提及`;
+  return `<p class="rec rec-st" title="${tip}">${qv}<span class="rl">推荐 <b>${fmt(b.ru)}</b> · 提及 <b>${fmt(b.u)}</b></span><span class="rs"><b>${fmt(b.ru)}</b> 推荐 · ${fmt(b.u)}</span></p>`;
 }
+/** 争议榜卡片的计数行：批评 / 推荐 / 提及。 */
+const critLine = (b) => `<p class="rec" title="${fmt(b.cu)} 人批评 · ${fmt(b.ru)} 人推荐 · ${fmt(b.u)} 人提及">批评 <b>${fmt(b.cu)}</b> · 推荐 <b>${fmt(b.ru)}</b> · 提及 ${fmt(b.u)}</p>`;
 
 /* ------- 我的书架（想读/读过/评分，只存本机 localStorage） ------- */
 const WL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
@@ -313,21 +316,21 @@ const wlToggle = (id) => {                          // 卡片角标：想读开/
   return toWish;
 };
 
-function cardHTML(b, eager = false) {
+function cardHTML(b, eager = false, line = recLine(b)) {
   const span = yearSpan(b);
   const badge = span ? `<span class="badge" title="提及年份 ${esc(span)}">${span}</span>` : '';
   const st = shelfOf(b.id);
   const wl = `<button class="wl${st?.s === 'wish' ? ' on' : st?.s === 'read' ? ' read' : ''}" data-wl="${esc(b.id)}" type="button" aria-label="${st ? '修改书架标记' : '加入书架'}">${st?.s === 'read' ? READ_ICON : WL_ICON}</button>`;
   return `<a class="card" href="/book/${encodeURIComponent(b.id)}">${coverHTML(b, false, badge, eager)}${wl}
   <h3>${esc(T(b))}</h3>${enName(b) ? `<p class="t-en">${esc(enName(b))}</p>` : ''}<p class="au">${esc((b.a || []).join(', '))}</p>
-  ${recLine(b)}</a>`;
+  ${line}${b.w ? `<p class="why1">${esc(b.w)}</p>` : ''}</a>`;
 }
 
 /* ============================== 信息流（增量网格） ============================== */
 let current = null; // 当前路由的 { raw, shown(), dispose() }
 
 /** 用哨兵元素 + IntersectionObserver 把 `list` 分批渲染进 `container`。 */
-function mountInfinite(container, list, initial = 0, partial = false) {
+function mountInfinite(container, list, initial = 0, partial = false, card = cardHTML) {
   let shown = 0, waiting = partial, failed = false;
   const sentinel = document.createElement('div');
   sentinel.className = 'sentinel';
@@ -337,7 +340,7 @@ function mountInfinite(container, list, initial = 0, partial = false) {
   function more(count = BATCH) {
     if (shown < list.length) {
       const slice = list.slice(shown, shown + count);
-      container.insertAdjacentHTML('beforeend', slice.map((b, i) => cardHTML(b, shown + i < EAGER)).join(''));
+      container.insertAdjacentHTML('beforeend', slice.map((b, i) => card(b, shown + i < EAGER)).join(''));
       shown += slice.length;
     }
     if (shown >= list.length) {
@@ -375,16 +378,22 @@ const DECADES = [
 const inDecade = (b, d) => b.y != null && (d === 'pre' ? b.y < 1950 : b.y >= +d && b.y < +d + 10);
 
 /** 渲染一个带筛选 chips（出版年代、首次提及年份）的书籍列表页。 */
-function renderFeed({ title, sub = '', path, query, items, pre = '', restore, full = true }) {
+function renderFeed({ title, sub = '', path, query, items, pre = '', restore, full = true, sortable = false, card }) {
   const dec = query.get('dec') || '';
   const since = +query.get('since') || 0;
-  const filter = (all) => (dec || since ? all.filter((b) => (!dec || inDecade(b, dec)) && (!since || (b.f || 0) >= since)) : all);
+  const sort = sortable && query.get('sort') === 'q' ? 'q' : '';
+  const byQ = (l) => l.map((b, i) => ({ b, i })).sort((x, y) => (y.b.q ?? -1) - (x.b.q ?? -1) || x.i - y.i).map((x) => x.b);
+  const filter = (all) => {
+    const l = dec || since ? all.filter((b) => (!dec || inDecade(b, dec)) && (!since || (b.f || 0) >= since)) : all;
+    return sort ? byQ(l) : l;
+  };
   const ly = state.meta.last_year;
-  const chip = (label, params, on) => `<a class="chip${on ? ' on' : ''}" href="${hashFor(path, { dec, since, ...params })}"${on ? ' aria-current="true"' : ''}>${esc(label)}</a>`;
+  const chip = (label, params, on) => `<a class="chip${on ? ' on' : ''}" href="${hashFor(path, { sort, dec, since, ...params })}"${on ? ' aria-current="true"' : ''}>${esc(label)}</a>`;
   const sinceOpts = [2015, 2020, ly - 1].filter((y, i, a) => a.indexOf(y) === i && y > state.meta.first_year);
   const chipsHTML = (all) => {
     const present = DECADES.filter(([d]) => all.some((b) => inDecade(b, d)));
-    return `<div class="chips" aria-label="按出版年代筛选"><span class="lbl">出版年代</span>${chip('全部', { dec: '' }, !dec)}${present.map(([d, l]) => chip(l, { dec: d }, dec === d)).join('')}</div>
+    const sortHTML = sortable ? `<div class="chips" aria-label="排序"><span class="lbl">排序</span>${chip('综合热度', { sort: '' }, !sort)}${chip('值得读指数', { sort: 'q' }, sort === 'q')}</div>` : '';
+    return `${sortHTML}<div class="chips" aria-label="按出版年代筛选"><span class="lbl">出版年代</span>${chip('全部', { dec: '' }, !dec)}${present.map(([d, l]) => chip(l, { dec: d }, dec === d)).join('')}</div>
     <div class="chips" aria-label="按首次被 HN 提及的年份筛选"><span class="lbl">首次提及</span>${chip('全部', { since: 0 }, !since)}${sinceOpts.map((y) => chip(y + ' 年起', { since: y }, since === y)).join('')}</div>`;
   };
 
@@ -399,7 +408,7 @@ function renderFeed({ title, sub = '', path, query, items, pre = '', restore, fu
   }
   // full=false 的feed（今日书架限量）不预载全量索引；带年代筛选的首页路由由 needsFull 在路由层补全量
   const partial = full && !state.full;
-  const ctl = current = mountInfinite($('#grid'), list, restore?.shown || 0, partial);
+  const ctl = current = mountInfinite($('#grid'), list, restore?.shown || 0, partial, card);
   if (partial) {
     const token = routeToken;
     ensureFull().then(() => {
@@ -445,6 +454,7 @@ function renderTop(q, restore) {
     query: q,
     items: () => state.books,
     restore,
+    sortable: true,
   });
 }
 
@@ -484,16 +494,20 @@ function renderTopic(slug, q, restore) {
   const items = cached('topic:' + slug, () => state.books.filter((b) => (b.tp || []).includes(slug)));
   renderFeed({
     title: topic.name,
-    sub: `共 ${fmt(items.length)} 本，按综合分数排名。`,
+    sub: `共 ${fmt(items.length)} 本。默认按综合热度排序，也可以切换成值得读指数。`,
     path: '/topic/' + slug,
     query: q,
     items: () => items,
     restore,
+    sortable: true,
+    pre: '<div id="paths"></div>',
   });
+  mountPaths(slug);
 }
 
 const ensureCoIndex = () => (state.coIndexP ??= getJSON('/data/co-index.json').then((m) => { state.coIndex = m; }).catch(() => { state.coIndex = {}; }));
 const ensurePyIndex = () => (state.pyIndexP ??= getJSON('/data/py-index.json').then((m) => { state.pyIndex = m; }).catch(() => { state.pyIndex = {}; }));
+const ensureAuthorMap = () => (state.authorMapP ??= getJSON('/data/author-map.json').then((m) => { state.authorMap = m; }).catch(() => { state.authorMap = {} }));
 const looksPinyin = (q) => /^[a-z]{2,}$/.test(q);
 function renderForYou(q, restore) {
   setPage('为你推荐', '根据你的书架标记与浏览记录在本地计算的个性化推荐。');
@@ -693,7 +707,10 @@ function bookHTML(b, d) {
     const ys = Object.keys(d.years).map(Number);
     if (ys.length) { full.f = Math.min(...ys); full.l = Math.max(...ys); }
   }
-  const authors = (full.a || []).map((a) => `<a href="${hashFor('/search', { q: a })}">${esc(a)}</a>`).join(', ');
+  const am = state.authorMap || {};
+  const authors = (full.a || []).map((a) => am[a]
+    ? `<a href="/author/${am[a]}.html" title="查看 ${esc(a)} 的作品页">${esc(a)}</a>`
+    : `<a href="${hashFor('/search', { q: a })}">${esc(a)}</a>`).join(', ');
   const topics = (full.tp || []).map((s) => `<a class="chip topic" href="/topic/${encodeURIComponent(s)}">${esc(state.topicByslug.get(s)?.name || s)}</a>`).join('');
   const span = yearSpan(full);
   const trendLink = (state.trends ? !!state.trends.books[full.id] : full.u >= 60) ? `<a class="btn" href="/trends?b=${encodeURIComponent(full.id)}">看它的热度走势</a>` : '';
@@ -890,6 +907,7 @@ async function renderBook(id) {
       if (token === routeToken && $('#related')) $('#related').innerHTML = relatedHTML(d);
     }, () => { /* 没有相关书 */ });
   }
+
   // 评论每页 15 条渲染，减轻 DOM 负担
   const list = $('#comments'), btn = $('#more-comments');
   const comments = d.comments || [];
@@ -992,11 +1010,18 @@ function wavesHTML(T) {
     return cards ? `<h3 class="tr-gh">${title}${sub ? ` <span>${sub}</span>` : ''}</h3><div class="grid">${cards}</div>` : '';
   };
   const rising = T.waves.filter((w) => w.rising);
-  const byYear = [...new Set(T.waves.filter((w) => !w.rising).map((w) => w.py))].sort((a, b) => b - a);
+  const peaked = T.waves.filter((w) => !w.rising).sort((a, b) => b.py - a.py);
+  const compact = (ws) => ws.map((w) => {
+    const b = state.byId.get(w.id);
+    if (!b) return '';
+    return `<a class="wcard" href="/book/${encodeURIComponent(w.id)}">${coverHTML(b)}
+    <span class="wt">${esc(trTitle(b))}</span>
+    <span class="wm">${w.py} 年见顶 · 峰值 ${trPct(w.pk)}</span></a>`;
+  }).join('');
   return `<section class="tr-sec" aria-labelledby="tr-h-waves"><h2 id="tr-h-waves">浪潮</h2>
   <p class="sub">火过一两年又归于沉寂的书。圆点标出峰值年份。</p>
   ${group(rising, '正在上升', '近两年才发力，还看不出会不会退潮')}
-  ${byYear.map((y) => group(T.waves.filter((w) => !w.rising && w.py === y), `${y} 年见顶`, y === T.years[0] ? '（HN 在本站数据里的第一个完整年份：总量小，噪声更大）' : '')).join('')}</section>`;
+  ${peaked.length ? `<h3 class="tr-gh">已见顶 <span>${peaked.length} 本，按峰值年份排列</span></h3><div class="wgrid">${compact(peaked)}</div>` : ''}</section>`;
 }
 
 /* ---- 年度排名（bump）图 ---- */
@@ -1151,9 +1176,9 @@ function mountGems(TR) {
     .filter((b) => b.n <= 300 && r(b) >= 0.55).slice(0, 12);
   const gemSet = new Set(gems);
   const esc2 = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const dots = cands.map((b) => {
+  const dots = cands.map((b, i) => {
     const isGem = gemSet.has(b);
-    return `<circle cx="${X(b.n).toFixed(1)}" cy="${Y(r(b)).toFixed(1)}" r="${isGem ? 4.5 : 2.6}" fill="${isGem ? 'var(--text)' : 'var(--border)'}" opacity="${isGem ? 1 : 0.55}"><title>${esc2(T(b))} · ${b.n} 次提及 · 推荐率 ${(r(b) * 100).toFixed(0)}%</title></circle>`;
+    return `<circle class="gemdot${isGem ? ' gem' : ''}" data-i="${i}" cx="${X(b.n).toFixed(1)}" cy="${Y(r(b)).toFixed(1)}" r="${isGem ? 4.5 : 2.6}" fill="${isGem ? 'var(--text)' : 'var(--border)'}" opacity="${isGem ? 1 : 0.55}"/>`;
   }).join('');
   host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="提及量与推荐率散点图">
     <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="var(--border)"/>
@@ -1163,7 +1188,21 @@ function mountGems(TR) {
     <text x="${W - P}" y="${H - P + 30}" font-size="11" fill="var(--muted)" text-anchor="end">提及次数（对数）</text>
     <text x="${P - 30}" y="${P - 20}" font-size="11" fill="var(--muted)">推荐率</text>
     ${dots}
-  </svg>`;
+  </svg><div class="gem-tip" hidden></div>`;
+  // hover 显示书名 tooltip，点击跳详情
+  const tip = host.querySelector('.gem-tip');
+  host.querySelectorAll('.gemdot').forEach((c) => {
+    c.addEventListener('mouseenter', () => {
+      const b = cands[+c.dataset.i];
+      tip.innerHTML = `<b>${esc2(T(b))}</b><span>${b.n} 次提及 · 推荐率 ${(r(b) * 100).toFixed(0)}%</span>`;
+      tip.hidden = false;
+      const wr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
+      tip.style.left = Math.min(Math.max(cr.left - wr.left - 30, 0), wr.width - 170) + 'px';
+      tip.style.top = (cr.top - wr.top - 58) + 'px';
+    });
+    c.addEventListener('mouseleave', () => { tip.hidden = true; });
+    c.addEventListener('click', () => { const b = cands[+c.dataset.i]; location.href = `/book/${b.id}`; });
+  });
   listHost.innerHTML = gems.length ? `<p class="sub">共 ${fmt(cands.length)} 本有足够样本的书。黑点是其中小众而高推荐的 ${gems.length} 本：</p><div class="row">${gems.map((b) => cardHTML(b)).join('')}</div>` : '';
 }
 
@@ -1698,6 +1737,8 @@ if (!navigator.connection?.saveData) {
   });
   route();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // 作者聚合页映射很小（300+ 条），空闲预取后详情页作者名可直接链接作品页
+  setTimeout(() => { ensureAuthorMap(); }, 2500);
   // 回到顶部（长榜单）
   const totop = document.createElement('button');
   totop.className = 'totop';

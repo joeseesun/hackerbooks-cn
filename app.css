@@ -356,3 +356,28 @@ dialog img { display: block; margin: 14px auto; background: #fff; }
 .totop.show { opacity: 1; pointer-events: auto; transform: none; }
 .totop:hover { background: var(--surface-2); }
 .totop svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- 历年年度书 ---- */
+.years .yr { margin: 0 0 44px; }
+.years .yr h2 { font: 700 30px var(--serif); padding-top: 14px; border-top: 1px solid var(--divider); margin: 0 0 14px; }
+.years .yr:first-of-type h2 { border-top: 0; padding-top: 0; }
+/* ---- 被低估的书散点 ---- */
+.gem-wrap { max-width: 680px; }
+.gem-wrap svg { width: 100%; height: auto; }
+.gem-wrap svg circle { cursor: pointer; }
+.gem-list { margin: 18px 0 0; }
+
+/* 散点图 tooltip */
+.gem-wrap { position: relative; }
+.gem-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--text); color: var(--bg); padding: 7px 10px; font-size: 12.5px; line-height: 1.5; max-width: 200px; }
+.gem-tip b { display: block; font-weight: 600; }
+.gem-tip span { opacity: 0.75; font-size: 11.5px; }
+.gemdot:hover { stroke: var(--text); stroke-width: 1.5; }
+/* 浪潮紧凑网格 */
+.wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 18px 16px; margin-top: 12px; }
+.wcard { display: flex; flex-direction: column; gap: 5px; text-decoration: none; color: inherit; min-width: 0; }
+.wcard:hover { text-decoration: none; }
+.wcard img, .wcard .cover { width: 100%; aspect-ratio: 2/3; object-fit: cover; outline: 1px solid var(--border); outline-offset: -1px; background: var(--surface-2); }
+.wcard .wt { font: 500 13px/1.35 var(--serif); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.wcard:hover .wt { text-decoration: underline; text-underline-offset: 0.2em; }
+.wcard .wm { color: var(--muted); font-size: 11.5px; }
