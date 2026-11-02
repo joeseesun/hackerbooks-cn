@@ -1,0 +1,11 @@
+# 站点数据（从 hackerbooks.org 抓取/生成，体积大且版权边界在原站，不入库）
+data/
+covers/
+
+# 抓取与翻译的工作产物
+*.log
+parts/
+*.part.json
+tmp_*
+
+.DS_Store

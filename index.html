@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>黑客书架 — Hacker News 评论中被提及最多的书</title>
+<meta name="description" content=" Hacker News 评论中被提及的 1.5 万多本书，2007–2026。按多少不同的人提及排序，也可以看哪些书被最多人真心推荐。">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="黑客书架">
+<meta property="og:title" content="黑客书架 — Hacker News 评论中被提及最多的书">
+<meta property="og:description" content="HN 读者提及最多的书架：1.5 万多本书，2007–2026，按不同提及人数排名。">
+<meta property="og:url" content="https://hackerbooks.qiaomu.ai/">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://hackerbooks.qiaomu.ai/">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23121212'/%3E%3Cpath d='M10 7h11v18H11.5A1.5 1.5 0 0 1 10 23.5z' fill='none' stroke='%23fff' stroke-width='1.8'/%3E%3Cpath d='M13.5 11.5h4M13.5 14.5h4' stroke='%23fff' stroke-width='1.6'/%3E%3C/svg%3E">
+<script>
+/* 首帧前应用已保存的主题，避免明暗闪烁 */
+try { var t = localStorage.getItem('hb.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"黑客书架","alternateName":"Hacker Books 中文版","url":"https://hackerbooks.qiaomu.ai/","description":"Hacker News 评论中被提及的 1.5 万多本书，按不同提及人数排名","inLanguage":"zh-CN"}
+</script>
+<link rel="stylesheet" href="fonts/fonts.css?v=6">
+<link rel="modulepreload" href="app.js?v=9">
+<!-- 首屏数据与 JS 并行下载：省掉「等 app.js 启动后才发起数据请求」的一个往返 -->
+<link rel="preload" as="fetch" href="data/books-top.json">
+<link rel="preload" as="fetch" href="data/meta.json">
+<link rel="preload" as="fetch" href="data/topics.json">
+<link rel="preload" as="font" type="font/woff2" href="fonts/gr-0-6d89986e.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="fonts/newsreader-latin-500-normal.woff2" crossorigin>
+<link rel="stylesheet" href="app.css?v=12">
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+
+<header class="topbar">
+  <button id="menu-btn" class="icon-btn" aria-label="切换导航栏" aria-controls="sidebar" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <a class="logo" href="#/" aria-label="黑客书架首页"><span class="logo-text">黑客书架</span></a>
+  <form id="search-form" class="search" role="search" autocomplete="off">
+    <label class="sr-only" for="q">搜索书名或作者</label>
+    <input id="q" type="search" placeholder="搜索书名、作者　( / )" enterkeyhint="search">
+    <button class="search-btn" type="submit" aria-label="搜索">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    </button>
+  </form>
+  <button id="reward-btn" class="icon-btn" aria-label="打赏支持" title="打赏支持">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+  </button>
+  <button id="follow-btn" class="icon-btn" aria-label="关注向阳乔木" title="关注向阳乔木">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+  </button>
+  <button id="help-btn" class="icon-btn hide-sm" aria-label="键盘快捷键" title="键盘快捷键（?）">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+  </button>
+  <button id="theme-btn" class="icon-btn" aria-label="切换明暗主题" title="切换主题">
+    <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+  </button>
+</header>
+
+<div class="scrim" id="scrim"></div>
+<div class="layout">
+  <nav id="sidebar" class="sidebar" aria-label="主导航">
+    <ul class="nav" id="nav-main">
+      <li><a href="#/" data-route="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" fill="currentColor"/></svg>今日书架</a></li>
+      <li><a href="#/top" data-route="top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2L3 9.5l6.3-.7z" fill="currentColor"/></svg>历史总榜</a></li>
+      <li><a href="#/recommended" data-route="recommended"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 2.5 1.3 2.2 2.8L12.7 9H19a2 2 0 0 1 2 2.3l-1.2 7a2 2 0 0 1-2 1.7H7" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>最多推荐</a></li>
+      <li><a href="#/rising" data-route="rising"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>上升最快</a></li>
+      <li><a href="#/trends" data-route="trends"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2.5 0 2.5-8 5-8s2.5 10 5 10 2.5-6 4-6 2 2 3 2" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>趋势</a></li>
+      <li><a href="#/foryou" data-route="foryou"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-8-5.3-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.7-8 11-8 11z" fill="currentColor"/></svg>为你推荐</a></li>
+      <li><a href="#/about" data-route="about"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 11v6M12 7.5v.1" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>关于本站</a></li>
+    </ul>
+    <h2 class="nav-h">话题分类</h2>
+    <ul class="nav topics" id="nav-topics"></ul>
+  </nav>
+
+  <main id="main" tabindex="-1"></main>
+</div>
+
+<footer class="footer">
+  <div class="foot-cols">
+    <div class="foot-about">
+      <p class="foot-brand">黑客书架 <span>Hacker Books 中文版</span></p>
+      <p>收录 <a href="https://news.ycombinator.com" rel="noopener" target="_blank">Hacker News</a> 评论中提及的书籍，按多少位不同的读者提及排序。数据整理自 <a href="https://hackerbooks.org" rel="noopener" target="_blank">hackerbooks.org</a>（roansh 作品），书籍元数据与封面来自 <a href="https://openlibrary.org" rel="noopener" target="_blank">Open Library</a>，评论版权归原作者所有，点击可回到原帖。</p>
+      <p>本站与 Y Combinator / Hacker News 无从属关系。</p>
+    </div>
+    <div class="foot-links">
+      <a href="https://tuijian.qiaomu.ai/" target="_blank" rel="noopener">乔木推荐</a>
+      <a href="https://github.com/joeseesun/" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://x.com/vista8" target="_blank" rel="noopener">X（Twitter）</a>
+      <a href="#/about">关于本站</a>
+    </div>
+  </div>
+  <p id="footer-meta"></p>
+</footer>
+
+<div id="live" class="sr-only" aria-live="polite"></div>
+
+<dialog id="help" aria-labelledby="help-h">
+  <h2 id="help-h">键盘快捷键</h2>
+  <dl class="keys">
+    <div><dt><kbd>/</kbd></dt><dd>聚焦搜索框</dd></div>
+    <div><dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>下一本 / 上一本</dd></div>
+    <div><dt><kbd>Enter</kbd></dt><dd>打开选中的书</dd></div>
+    <div><dt><kbd>Esc</kbd></dt><dd>关闭 / 返回</dd></div>
+    <div><dt><kbd>g</kbd> <kbd>h</kbd></dt><dd>回到今日书架</dd></div>
+    <div><dt><kbd>g</kbd> <kbd>t</kbd></dt><dd>历史总榜</dd></div>
+    <div><dt><kbd>g</kbd> <kbd>m</kbd></dt><dd>最多推荐</dd></div>
+    <div><dt><kbd>g</kbd> <kbd>r</kbd></dt><dd>上升最快</dd></div>
+    <div><dt><kbd>g</kbd> <kbd>f</kbd></dt><dd>为你推荐</dd></div>
+    <div><dt><kbd>?</kbd></dt><dd>显示本帮助</dd></div>
+  </dl>
+  <form method="dialog"><button class="btn">关闭</button></form>
+</dialog>
+
+<dialog id="reward-modal" class="qr-modal" aria-labelledby="reward-h">
+  <h2 id="reward-h">打赏支持</h2>
+  <p class="qr-note">如果这个书架对你有用，欢迎请作者喝杯咖啡。</p>
+  <img src="assets/reward-qr.png" alt="打赏二维码" width="260" height="260">
+  <form method="dialog"><button class="btn">关闭</button></form>
+</dialog>
+
+<dialog id="follow-modal" class="qr-modal" aria-labelledby="follow-h">
+  <h2 id="follow-h">关注向阳乔木</h2>
+  <p class="qr-note">微信扫码关注「向阳乔木推荐看」，每天精选值得看的网站、工具与文章。</p>
+  <img src="assets/wechat-qr.jpg" alt="微信公众号「向阳乔木推荐看」二维码" width="260" height="260">
+  <p class="qr-links">
+    <a href="https://github.com/joeseesun/" target="_blank" rel="noopener">GitHub</a> ·
+    <a href="https://x.com/vista8" target="_blank" rel="noopener">X（Twitter）</a> ·
+    <a href="https://tuijian.qiaomu.ai/" target="_blank" rel="noopener">乔木推荐</a>
+  </p>
+  <form method="dialog"><button class="btn">关闭</button></form>
+</dialog>
+
+<noscript><p class="noscript">浏览书架需要启用 JavaScript。</p></noscript>
+<script type="module" src="app.js?v=9"></script>
+<script defer src="https://umami.qiaomu.ai/script.js" data-website-id="5625e3a1-6a6c-4fca-87c6-bdcd984eba43"></script>
+</body>
+</html>
