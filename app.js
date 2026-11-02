@@ -586,7 +586,7 @@ function renderAbout() {
   <p>只数提及会让一本被讨论（甚至被警告）的书看起来像人气好书。因此每条提及都被模型标注为 <i>推荐</i>、<i>中性</i>、<i>批评</i> 或 <i>与书无关</i>。「推荐人数」统计至少推荐过一次的不同的人；与书无关的提及会被剔除。<a href="/recommended">最多推荐</a>页按推荐人数排名。标注与更仔细的参考模型一致率约 85%，会有噪声。</p>
   <h2>来源与致谢</h2>
   <p>本站是 <a href="https://hackerbooks.org" rel="noopener" target="_blank">hackerbooks.org</a> 的中文版。原站由 <a href="https://rohitshinde.in" rel="author" target="_blank" rel="noopener">roansh</a> 构建，感谢其公开的数据管道（完整数据集可在原站获取）。书籍元数据与封面来自 <a href="https://openlibrary.org" rel="noopener" target="_blank">Open Library</a>；评论文字版权归原作者所有，页面上只保留摘录并链接回原帖。</p>
-  <p>灵感来自 Andrej Karpathy 的 <a href="https://hackertube.org" rel="noopener" target="_blank">HackerTube</a>。中文版由 <a href="https://tuijian.qiaomu.ai/" target="_blank" rel="noopener">乔木</a> 维护，代码在 <a href="https://github.com/joeseesun/hackerbooks-cn" rel="noopener" target="_blank">GitHub</a> 开源。</p>
+  <p>灵感来自 Andrej Karpathy 的 <a href="https://hackertube.org" rel="noopener" target="_blank">HackerTube</a>。中文版由 <a href="https://www.qiaomu.ai/" target="_blank" rel="noopener">向阳乔木</a> 维护，代码在 <a href="https://github.com/joeseesun/hackerbooks-cn" rel="noopener" target="_blank">GitHub</a> 开源。</p>
   <h2>隐私</h2>
   <p>没有账号，没有跨站跟踪。「为你推荐」完全在你的浏览器里根据你打开过的书计算，只存在本机 localStorage。</p>
   </article>`;
