@@ -1316,7 +1316,7 @@ function mountCompare(host, T, ids0, ctl) {
   sync();
 }
 
-async function renderTrends(q, restore) {
+async function renderTrends(q, restore, scrollTo) {
   const token = routeToken;
   setPage('趋势', '书在 Hacker News 评论里如何升起、登顶与退潮（2008–2026）：年度十佳、常青书、一年爆红与对比工具。');
   const ctl = current = {
@@ -1352,6 +1352,7 @@ async function renderTrends(q, restore) {
   mountCompare($('#tr-cmp'), T, ids, ctl);
   if (restore) window.scrollTo(0, restore.y);
   else if (asked.length) $('#tr-compare').scrollIntoView({ block: 'start' });
+  else if (scrollTo) $(`#${scrollTo}`)?.scrollIntoView({ block: 'start' });
 }
 
 /* ---- /years：历年年度书时间线 ---- */
@@ -1406,7 +1407,7 @@ function needsFull(name, seg, query) {
   switch (name) {
     case 'home': case 'top':
       return !!(query.get('dec') || +query.get('since'));
-    case 'rising': case 'trends': case 'recommended': case 'years':
+    case 'rising': case 'trends': case 'recommended': case 'years': case 'underrated':
       return true;
     case 'search':
       return !!(query.get('q') || '').trim();
@@ -1448,6 +1449,7 @@ function route() {
       case 'recommended': renderRecommended(query, restore); break;
       case 'rising': renderRising(query, restore); break;
       case 'trends': renderTrends(query, restore); break;
+      case 'underrated': renderTrends(query, restore, 'tr-gems'); break;
       case 'years': renderYears(restore); break;
       case 'foryou': renderForYou(query, restore); break;
       case 'list': renderShelf(restore, query); break;
