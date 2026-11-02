@@ -23,15 +23,15 @@ try { var t = localStorage.getItem('hb.theme'); if (t === 'light' || t === 'dark
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebSite","name":"黑客书架","alternateName":"Hacker Books 中文版","url":"https://hackerbooks.qiaomu.ai/","description":"Hacker News 评论中被提及的 1.5 万多本书，按不同提及人数排名","inLanguage":"zh-CN"}
 </script>
-<link rel="stylesheet" href="fonts/fonts.css?v=6">
-<link rel="modulepreload" href="app.js?v=9">
+<link rel="stylesheet" href="fonts/fonts.css?v=4fe36c0f">
+<link rel="modulepreload" href="app.js?v=10">
 <!-- 首屏数据与 JS 并行下载：省掉「等 app.js 启动后才发起数据请求」的一个往返 -->
 <link rel="preload" as="fetch" href="data/books-top.json">
 <link rel="preload" as="fetch" href="data/meta.json">
 <link rel="preload" as="fetch" href="data/topics.json">
 <link rel="preload" as="font" type="font/woff2" href="fonts/gr-0-6d89986e.woff2" crossorigin>
 <link rel="preload" as="font" type="font/woff2" href="fonts/newsreader-latin-500-normal.woff2" crossorigin>
-<link rel="stylesheet" href="app.css?v=12">
+<link rel="stylesheet" href="app.css?v=14">
 </head>
 <body>
 <a class="skip" href="#main">跳到正文</a>
@@ -91,7 +91,7 @@ try { var t = localStorage.getItem('hb.theme'); if (t === 'light' || t === 'dark
     </div>
     <div class="foot-links">
       <a href="https://tuijian.qiaomu.ai/" target="_blank" rel="noopener">乔木推荐</a>
-      <a href="https://github.com/joeseesun/" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/joeseesun/hackerbooks-cn" target="_blank" rel="noopener">GitHub</a>
       <a href="https://x.com/vista8" target="_blank" rel="noopener">X（Twitter）</a>
       <a href="#/about">关于本站</a>
     </div>
@@ -138,7 +138,7 @@ try { var t = localStorage.getItem('hb.theme'); if (t === 'light' || t === 'dark
 </dialog>
 
 <noscript><p class="noscript">浏览书架需要启用 JavaScript。</p></noscript>
-<script type="module" src="app.js?v=9"></script>
+<script type="module" src="app.js?v=10"></script>
 <script defer src="https://umami.qiaomu.ai/script.js" data-website-id="5625e3a1-6a6c-4fca-87c6-bdcd984eba43"></script>
 </body>
 </html>

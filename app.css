@@ -29,7 +29,7 @@
   --side-w: 232px;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --serif: "HP Serif", "HP Serif SC", "Noto Serif SC", "Songti SC", "STSong", serif;
-  --latin: "Newsreader", "HP Serif", "Songti SC", Georgia, serif;
+  --latin: "Newsreader", "HP Serif", "HP Serif SC", "Songti SC", Georgia, serif;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
 }
 @media (prefers-color-scheme: dark) {
@@ -166,7 +166,7 @@ body.side-collapsed .sidebar { display: none; }
 @media (max-width: 399px) { .rec-st .rm { display: none !important; } .rec-st .rs { display: inline !important; } }
 
 /* ---- 书籍详情页 ---- */
-.book { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 36px; max-width: 920px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.book { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 36px; max-width: 920px; padding-top: 18px; border-top: 1px solid var(--divider); }
 /* 封面+信息两栏之后，各区块（历年图表/评论区/相关书籍）通栏铺开 */
 .book > .sec, .book > #related { grid-column: 1 / -1; }
 .book > div:first-child { align-self: start; }
