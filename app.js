@@ -554,10 +554,52 @@ function renderSearch(q) {
   }
   main.innerHTML = `<div class="page-h"><h1>“${esc(text)}” 的搜索结果</h1></div><p class="sub">找到 ${fmt(all.length)} 本${(dec || tp) ? `，筛出 ${fmt(results.length)} 本。<a href="${hashFor('/search', { q: text })}">清除筛选</a>` : ''}。</p>${chips}<div class="grid" id="grid"></div>`;
   if (!results.length) {
-    $('#grid').outerHTML = '<p class="empty">没有匹配的书。试试更少的字或别的拼写。</p>';
+    const sugs = suggestTitles(text);
+    $('#grid').outerHTML = '<p class="empty">没有匹配的书。' + (sugs.length
+      ? '你是不是要找：' + sugs.map((b) => `<a class="chip" href="${hashFor('/search', { q: T(b) })}">${esc(T(b))}</a>`).join(' ')
+      : '试试更少的字或别的拼写。') + '</p>';
     return;
   }
   current = mountInfinite($('#grid'), results);
+}
+
+/* 零结果时的近似书名建议：限制编辑距离的 Levenshtein */
+function lev(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      rowMin = Math.min(rowMin, cur[j]);
+    }
+    if (rowMin > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function suggestTitles(q, limit = 5) {
+  const nq = norm(q).replace(/\s+/g, '');
+  if (nq.length < 2) return [];
+  const max = nq.length <= 2 ? 1 : nq.length <= 5 ? 1 : 2;
+  const ascii = /^[a-z]+$/.test(nq);
+  const cands = new Map();
+  for (const b of state.books) {
+    let hit = null;
+    if (ascii) {
+      const p = state.pyIndex && state.pyIndex[b.id];
+      if (p && Math.abs(p[0].length - nq.length) <= max && lev(p[0], nq, max) <= max) hit = T(b);
+    } else {
+      for (const t of [norm(b.tz || ''), norm(b.t)]) {
+        const tt = t.replace(/\s+/g, '');
+        if (tt && Math.abs(tt.length - nq.length) <= max && lev(tt, nq, max) <= max) { hit = T(b); break; }
+      }
+    }
+    if (hit) cands.set(b.id, hit);
+    if (cands.size >= limit * 4) break;
+  }
+  return [...cands.keys()].slice(0, limit).map((id) => state.byId.get(id)).filter(Boolean);
 }
 
 function renderNotFound(msg = '这个页面不存在。') {
@@ -1093,6 +1135,38 @@ function mountBump(box, T, ctl) {
   ctl.ros.push(watchWidth(sc, draw));
 }
 
+/* 被低估的书：提及量（对数）× 推荐率散点，右下象限 = 小众高推荐 */
+function mountGems(TR) {
+  const host = $('#gem-chart'), listHost = $('#gem-list');
+  if (!host) return;
+  const cands = state.books.filter((b) => (b.n || 0) >= 15 && (b.ru || 0) >= 3 && b.c != null);
+  if (cands.length < 20) { host.innerHTML = '<p class="sub">数据不足。</p>'; return; }
+  const W = 680, H = 420, P = 44;
+  const lx = (n) => Math.log10(n), r = (b) => (b.ru || 0) / (b.n || 1);
+  const xs = cands.map((b) => lx(b.n)), ys = cands.map((b) => r(b));
+  const x0 = Math.floor(Math.min(...xs)), x1 = Math.ceil(Math.max(...xs));
+  const X = (v) => P + ((lx(v) - x0) / (x1 - x0)) * (W - P * 2);
+  const Y = (v) => H - P - v * (H - P * 2);
+  const gems = [...cands].sort((a, b) => r(b) - r(a) || a.n - b.n)
+    .filter((b) => b.n <= 300 && r(b) >= 0.55).slice(0, 12);
+  const gemSet = new Set(gems);
+  const esc2 = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const dots = cands.map((b) => {
+    const isGem = gemSet.has(b);
+    return `<circle cx="${X(b.n).toFixed(1)}" cy="${Y(r(b)).toFixed(1)}" r="${isGem ? 4.5 : 2.6}" fill="${isGem ? 'var(--text)' : 'var(--border)'}" opacity="${isGem ? 1 : 0.55}"><title>${esc2(T(b))} · ${b.n} 次提及 · 推荐率 ${(r(b) * 100).toFixed(0)}%</title></circle>`;
+  }).join('');
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="提及量与推荐率散点图">
+    <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="var(--border)"/>
+    <line x1="${P}" y1="${P}" x2="${P}" y2="${H - P}" stroke="var(--border)"/>
+    ${[x0, x0 + Math.round((x1 - x0) / 2), x1].map((n) => `<text x="${X(10 ** n)}" y="${H - P + 16}" font-size="11" fill="var(--muted)" text-anchor="middle">${10 ** n}</text>`).join('')}
+    ${[0, 0.5, 1].map((v) => `<text x="${P - 8}" y="${Y(v) + 4}" font-size="11" fill="var(--muted)" text-anchor="end">${v * 100}%</text>`).join('')}
+    <text x="${W - P}" y="${H - P + 30}" font-size="11" fill="var(--muted)" text-anchor="end">提及次数（对数）</text>
+    <text x="${P - 30}" y="${P - 20}" font-size="11" fill="var(--muted)">推荐率</text>
+    ${dots}
+  </svg>`;
+  listHost.innerHTML = gems.length ? `<p class="sub">共 ${fmt(cands.length)} 本有足够样本的书。黑点是其中小众而高推荐的 ${gems.length} 本：</p><div class="row">${gems.map((b) => cardHTML(b)).join('')}</div>` : '';
+}
+
 function bumpSectionHTML(T) {
   const ys = T.years, co = Object.values(T.stats.carryover);
   const avg = Math.round(co.reduce((a, b) => a + b, 0) / co.length);
@@ -1267,14 +1341,44 @@ async function renderTrends(q, restore) {
   const ly = T.years[T.years.length - 1];
   main.innerHTML = `<div class="page-h"><h1>趋势</h1></div>
   <p class="sub">有些书在 HN 常青不倒，有些书爆红一两年就消失。这里的每个数字都是该书占当年全部书籍提及的份额（按不同评论者计），所以 HN 自身的增长不会影响对比。</p>
+  <p class="sub"><a href="/years">历年年度书（${T.years[0]}–${ly}）→</a> · <a href="/underrated">被低估的书 →</a></p>
   ${bumpSectionHTML(T)}${evergreensHTML(T)}${wavesHTML(T)}
+  <section class="tr-sec" id="tr-gems" aria-labelledby="tr-h-gem"><h2 id="tr-h-gem">被低估的书</h2><div class="gem-wrap" id="gem-chart"></div><div class="gem-list" id="gem-list"></div></section>
   <section class="tr-sec" id="tr-compare" aria-labelledby="tr-h-cmp"><h2 id="tr-h-cmp">对比书籍</h2>
     <p class="sub">${T.years[0]}–${ly} 年各书占全部书籍提及的份额（${ly} 年数据到 11 月 1 日）。最多添加 ${TR_MAX} 本。${asked.length && !valid.length ? '链接里的书没有趋势数据，先给你看一组默认对比。' : ''}</p>
     <div id="tr-cmp"></div></section>`;
   mountBump($('#tr-bump'), T, ctl);
+  mountGems(T);
   mountCompare($('#tr-cmp'), T, ids, ctl);
   if (restore) window.scrollTo(0, restore.y);
   else if (asked.length) $('#tr-compare').scrollIntoView({ block: 'start' });
+}
+
+/* ---- /years：历年年度书时间线 ---- */
+async function renderYears(restore) {
+  const token = routeToken;
+  setPage('历年年度书', '2008–2026，每年 Hacker News 评论里被提及最多的十本书。');
+  current = { raw: '', shown: () => 0, dispose() {}, };
+  main.innerHTML = '<div class="skel">趋势数据加载中…</div>';
+  let T;
+  try { T = await getTrends(); } catch {
+    if (token !== routeToken) return;
+    main.innerHTML = '<div class="empty"><h2>数据加载失败</h2><p><button class="btn primary" onclick="route()">重试</button></p></div>';
+    return;
+  }
+  if (token !== routeToken) return;
+  await ensureFull().catch(() => {});
+  if (token !== routeToken) return;
+  const years = Object.keys(T.top10).sort();
+  const rows = years.reverse().map((y) => {
+    const books = T.top10[y].map(([id]) => state.byId.get(id)).filter(Boolean);
+    if (!books.length) return '';
+    return `<section class="yr"><h2>${y}</h2><div class="row">${books.map((b) => cardHTML(b)).join('')}</div></section>`;
+  }).join('');
+  main.innerHTML = `<div class="page-h"><h1>历年年度书</h1></div>
+  <p class="sub">2008–2026，每年 HN 评论里被提及最多的十本书。一年一年往下翻，能看见整个技术圈的口味变迁。</p>
+  <div class="years">${rows}</div>`;
+  if (restore) window.scrollTo(0, restore.y);
 }
 
 /* ============================== 路由 ============================== */
@@ -1302,7 +1406,7 @@ function needsFull(name, seg, query) {
   switch (name) {
     case 'home': case 'top':
       return !!(query.get('dec') || +query.get('since'));
-    case 'rising': case 'trends': case 'recommended':
+    case 'rising': case 'trends': case 'recommended': case 'years':
       return true;
     case 'search':
       return !!(query.get('q') || '').trim();
@@ -1344,6 +1448,7 @@ function route() {
       case 'recommended': renderRecommended(query, restore); break;
       case 'rising': renderRising(query, restore); break;
       case 'trends': renderTrends(query, restore); break;
+      case 'years': renderYears(restore); break;
       case 'foryou': renderForYou(query, restore); break;
       case 'list': renderShelf(restore, query); break;
       case 'topic': renderTopic(seg[1], query, restore); break;
